@@ -3354,8 +3354,37 @@ pub async fn open_worktree_in_terminal(
 
     #[cfg(target_os = "windows")]
     {
-        match terminal_app.as_str() {
-            "powershell" => {
+        let result = match terminal_app.as_str() {
+            "warp" => {
+                // Try known install path first, then fall back to PATH
+                let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+                let known_path = format!("{local}\\Programs\\Warp\\warp.exe");
+                let warp_exe = if std::path::Path::new(&known_path).exists() {
+                    known_path
+                } else if crate::platform::executable_exists("warp") {
+                    "warp".to_string()
+                } else {
+                    return Err(format!(
+                        "Warp not found. Checked: {known_path} and PATH"
+                    ));
+                };
+                log::trace!("Using Warp at: {warp_exe}");
+                std::process::Command::new(&warp_exe)
+                    .current_dir(&worktree_path)
+                    .spawn()
+            }
+            "windows-terminal" => {
+                std::process::Command::new("wt")
+                    .args(["-d", &worktree_path])
+                    .spawn()
+            }
+            "cmd" => {
+                std::process::Command::new("cmd")
+                    .args(["/k", &format!("cd /d \"{worktree_path}\"")])
+                    .spawn()
+            }
+            _ => {
+                // Default: PowerShell
                 std::process::Command::new("powershell")
                     .args([
                         "-NoExit",
@@ -3363,37 +3392,13 @@ pub async fn open_worktree_in_terminal(
                         &format!("Set-Location '{worktree_path}'"),
                     ])
                     .spawn()
-                    .map_err(|e| format_open_error("PowerShell", &e))?;
             }
-            "cmd" => {
-                std::process::Command::new("cmd")
-                    .args(["/k", &format!("cd /d \"{worktree_path}\"")])
-                    .spawn()
-                    .map_err(|e| format_open_error("CMD", &e))?;
-            }
-            _ => {
-                // Default: Windows Terminal (wt.exe) — opens new tab in existing window
-                let result = std::process::Command::new("wt")
-                    .args(["-w", "0", "nt", "-d", &worktree_path])
-                    .spawn();
+        };
 
-                match result {
-                    Ok(_) => {}
-                    Err(_) => {
-                        // Fallback to PowerShell if wt.exe not available
-                        std::process::Command::new("powershell")
-                            .args([
-                                "-NoExit",
-                                "-Command",
-                                &format!("Set-Location '{worktree_path}'"),
-                            ])
-                            .spawn()
-                            .map_err(|e| format_open_error("PowerShell", &e))?;
-                    }
-                }
-            }
+        match result {
+            Ok(_) => log::trace!("Opened {terminal_app} in {worktree_path}"),
+            Err(e) => return Err(format!("Failed to open {terminal_app}: {e}")),
         }
-        log::trace!("Opened terminal in {worktree_path}");
     }
 
     Ok(())
