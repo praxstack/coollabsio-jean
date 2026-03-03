@@ -1,7 +1,9 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@/lib/transport'
+import { isTauri } from '@/services/projects'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -852,7 +854,10 @@ export function useMessageHandlers({
         customProfileName: getCustomProfileName(),
       })
 
-      // Optionally close the original session
+      // Optionally close the original session — but only after the new session's
+      // send_chat_message has started (chat:sending event). This avoids a race where
+      // close_session runs concurrently with send_chat_message and interferes with
+      // the new session's startup. Falls back to a 10s timeout as a safety net.
       const prefs = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
       )
@@ -861,12 +866,42 @@ export function useMessageHandlers({
           prefs.removal_behavior === 'archive'
             ? 'archive_session'
             : 'close_session'
-        invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
-          console.error(
-            '[useMessageHandlers] Failed to close original session:',
-            err
-          )
-        })
+
+        const doClose = () => {
+          invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+            console.error(
+              '[useMessageHandlers] Failed to close original session:',
+              err
+            )
+          })
+        }
+
+        if (isTauri()) {
+          const newSessionId = newSession.id
+          let closed = false
+          const timeout = setTimeout(() => {
+            if (!closed) {
+              closed = true
+              doClose()
+            }
+          }, 10000)
+
+          listen<{ session_id: string }>('chat:sending', event => {
+            if (event.payload.session_id === newSessionId && !closed) {
+              closed = true
+              clearTimeout(timeout)
+              doClose()
+            }
+          }).catch(() => {
+            if (!closed) {
+              closed = true
+              clearTimeout(timeout)
+              doClose()
+            }
+          })
+        } else {
+          doClose()
+        }
       }
     },
     [
@@ -979,7 +1014,10 @@ export function useMessageHandlers({
       customProfileName: getCustomProfileName(),
     })
 
-    // Optionally close the original session
+    // Optionally close the original session — but only after the new session's
+    // send_chat_message has started (chat:sending event). This avoids a race where
+    // close_session runs concurrently with send_chat_message and interferes with
+    // the new session's startup. Falls back to a 10s timeout as a safety net.
     const prefs = queryClient.getQueryData<AppPreferences>(
       preferencesQueryKeys.preferences()
     )
@@ -988,12 +1026,42 @@ export function useMessageHandlers({
         prefs.removal_behavior === 'archive'
           ? 'archive_session'
           : 'close_session'
-      invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
-        console.error(
-          '[useMessageHandlers] Failed to close original session:',
-          err
-        )
-      })
+
+      const doClose = () => {
+        invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to close original session:',
+            err
+          )
+        })
+      }
+
+      if (isTauri()) {
+        const newSessionId = newSession.id
+        let closed = false
+        const timeout = setTimeout(() => {
+          if (!closed) {
+            closed = true
+            doClose()
+          }
+        }, 10000)
+
+        listen<{ session_id: string }>('chat:sending', event => {
+          if (event.payload.session_id === newSessionId && !closed) {
+            closed = true
+            clearTimeout(timeout)
+            doClose()
+          }
+        }).catch(() => {
+          if (!closed) {
+            closed = true
+            clearTimeout(timeout)
+            doClose()
+          }
+        })
+      } else {
+        doClose()
+      }
     }
   }, [
     activeSessionIdRef,

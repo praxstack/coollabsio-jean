@@ -1317,7 +1317,9 @@ export function useSendMessage() {
       // Check for cancellation - Tauri errors may not be Error instances
       // so we check both the stringified error and the message property
       const errorStr = String(error)
-      const errorMessage = error instanceof Error ? error.message : ''
+      // Tauri invoke errors are strings, not Error instances — extract from both
+      const errorMessage =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : errorStr
       const isCancellation =
         errorStr.includes('cancelled') || errorMessage.includes('cancelled')
 

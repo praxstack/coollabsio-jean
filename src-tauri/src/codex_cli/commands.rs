@@ -437,7 +437,15 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
 
     if !version_output.status.success() {
         let stderr = String::from_utf8_lossy(&version_output.stderr);
-        return Err(format!("Codex CLI verification failed: {stderr}"));
+        let stdout = String::from_utf8_lossy(&version_output.stdout);
+        let output = if !stderr.is_empty() {
+            stderr.to_string()
+        } else if !stdout.is_empty() {
+            stdout.to_string()
+        } else {
+            format!("exit code {}", version_output.status)
+        };
+        return Err(format!("Codex CLI verification failed: {output}"));
     }
 
     // Clean up stale .old binary from Windows rename-on-reinstall

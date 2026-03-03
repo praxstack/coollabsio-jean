@@ -168,6 +168,57 @@ pub fn cancel_process(
     }
 }
 
+/// Cancel a running Claude process only if one is actively registered.
+/// Unlike `cancel_process`, this does NOT add to PENDING_CANCELS and does NOT emit
+/// `chat:cancelled` when the session is idle. Safe to call on idle sessions during
+/// close/archive operations to avoid spurious "Request cancelled" events.
+pub fn cancel_process_if_running(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+) -> Result<bool, String> {
+    let mut registry = PROCESS_REGISTRY.lock().unwrap();
+
+    if let Some(pid) = registry.remove(session_id) {
+        if pid == 0 || pid == 1 {
+            log::error!("Refusing to kill dangerous PID: {pid}");
+            return Err(format!("Invalid PID: {pid}"));
+        }
+
+        log::trace!("Cancelling Claude process group {pid} for session: {session_id}");
+
+        use crate::platform::{is_process_alive, kill_process, kill_process_tree};
+
+        if !is_process_alive(pid) {
+            log::warn!("Process {pid} check failed (may have exited)");
+        }
+
+        if let Err(e) = kill_process_tree(pid) {
+            log::error!("Failed to kill process tree for pid={pid}: {e}");
+        }
+        let _ = kill_process(pid);
+
+        if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
+            log::warn!("Failed to mark run as cancelled in manifest: {e}");
+        }
+
+        let event = CancelledEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            undo_send: false,
+        };
+        if let Err(e) = app.emit_all("chat:cancelled", &event) {
+            log::error!("Failed to emit chat:cancelled event: {e}");
+        }
+
+        Ok(true)
+    } else {
+        // Session is idle — do nothing. No PENDING_CANCELS, no event emission.
+        log::trace!("Session {session_id} has no running process, skipping cancel");
+        Ok(false)
+    }
+}
+
 /// Cancel all running Claude processes for a given worktree
 /// Called before worktree deletion to clean up orphaned processes
 pub fn cancel_processes_for_worktree(app: &AppHandle, worktree_id: &str) {

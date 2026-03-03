@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { listen } from '@tauri-apps/api/event'
 import { useChatStore } from '@/store/chat-store'
 import { usePreferences } from '@/services/preferences'
 import {
@@ -11,6 +12,7 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
+import { isTauri } from '@/services/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
@@ -162,28 +164,62 @@ export function useClearContextApproval({
         customProfileName: card.session.selected_provider ?? undefined,
       })
 
-      // Optionally close the original session
+      // Optionally close the original session — but only after the new session's
+      // send_chat_message has started (chat:sending event). This avoids a race where
+      // close_session runs concurrently with send_chat_message and interferes with
+      // the new session's startup. Falls back to a 10s timeout as a safety net.
       if (preferences?.close_original_on_clear_context) {
         const command =
           preferences.removal_behavior === 'archive'
             ? 'archive_session'
             : 'close_session'
-        invoke(command, {
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-          .then(() => {
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
+
+        const doClose = () => {
+          invoke(command, {
+            worktreeId,
+            worktreePath,
+            sessionId,
+          })
+            .then(() => {
+              queryClient.invalidateQueries({
+                queryKey: chatQueryKeys.sessions(worktreeId),
+              })
             })
+            .catch(err => {
+              console.error(
+                '[useClearContextApproval] Failed to close original session:',
+                err
+              )
+            })
+        }
+
+        if (isTauri()) {
+          const newSessionId = newSession.id
+          let closed = false
+          const timeout = setTimeout(() => {
+            if (!closed) {
+              closed = true
+              doClose()
+            }
+          }, 10000)
+
+          listen<{ session_id: string }>('chat:sending', event => {
+            if (event.payload.session_id === newSessionId && !closed) {
+              closed = true
+              clearTimeout(timeout)
+              doClose()
+            }
+          }).catch(() => {
+            // If listen fails, fall back to immediate close
+            if (!closed) {
+              closed = true
+              clearTimeout(timeout)
+              doClose()
+            }
           })
-          .catch(err => {
-            console.error(
-              '[useClearContextApproval] Failed to close original session:',
-              err
-            )
-          })
+        } else {
+          doClose()
+        }
       }
     },
     [

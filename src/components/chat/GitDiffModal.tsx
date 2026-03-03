@@ -870,12 +870,14 @@ export function GitDiffModal({
     }
   }, [])
 
-  // Determine if both diff types are available for the switcher
-  const hasUncommitted =
-    (uncommittedStats?.added ?? 0) > 0 || (uncommittedStats?.removed ?? 0) > 0
-  const hasBranchDiff =
-    (branchStats?.added ?? 0) > 0 || (branchStats?.removed ?? 0) > 0
+  // Show switcher whenever both diff contexts are available, even when counts are zero.
+  const hasUncommitted = uncommittedStats !== undefined
+  const hasBranchDiff = branchStats !== undefined
   const showSwitcher = hasUncommitted && hasBranchDiff
+  const uncommittedAdded = uncommittedStats?.added ?? 0
+  const uncommittedRemoved = uncommittedStats?.removed ?? 0
+  const branchAdded = branchStats?.added ?? 0
+  const branchRemoved = branchStats?.removed ?? 0
 
   // Handle switching between diff types
   const handleSwitchDiffType = useCallback(
@@ -941,12 +943,8 @@ export function GitDiffModal({
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Uncommitted
-                <span className="text-green-500">
-                  +{uncommittedStats?.added}
-                </span>
-                <span className="text-red-500">
-                  -{uncommittedStats?.removed}
-                </span>
+                <span className="text-green-500">+{uncommittedAdded}</span>
+                <span className="text-red-500">-{uncommittedRemoved}</span>
               </button>
               <button
                 type="button"
@@ -960,8 +958,8 @@ export function GitDiffModal({
               >
                 <GitBranch className="h-3.5 w-3.5" />
                 Branch
-                <span className="text-green-500">+{branchStats?.added}</span>
-                <span className="text-red-500">-{branchStats?.removed}</span>
+                <span className="text-green-500">+{branchAdded}</span>
+                <span className="text-red-500">-{branchRemoved}</span>
               </button>
             </div>
           ) : (

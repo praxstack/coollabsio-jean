@@ -46,6 +46,10 @@ export function useMcpServerResolution({
     deferredSessionId ? state.enabledMcpServers[deferredSessionId] : undefined
   )
 
+  // Explicit session override (including empty array) must take precedence.
+  // Auto-enable should not re-add servers the user just disabled in-session.
+  const hasSessionOverride = sessionEnabledMcpServers !== undefined
+
   // Resolve enabled servers from session → project → global defaults
   const baseEnabledMcpServers = useMemo(() => {
     if (sessionEnabledMcpServers !== undefined) return sessionEnabledMcpServers
@@ -62,15 +66,19 @@ export function useMcpServerResolution({
     [project?.known_mcp_servers, preferences?.known_mcp_servers]
   )
 
-  const newAutoEnabled = useMemo(
-    () =>
-      getNewServersToAutoEnable(
-        availableMcpServers,
-        baseEnabledMcpServers,
-        knownMcpServers
-      ),
-    [availableMcpServers, baseEnabledMcpServers, knownMcpServers]
-  )
+  const newAutoEnabled = useMemo(() => {
+    if (hasSessionOverride) return []
+    return getNewServersToAutoEnable(
+      availableMcpServers,
+      baseEnabledMcpServers,
+      knownMcpServers
+    )
+  }, [
+    hasSessionOverride,
+    availableMcpServers,
+    baseEnabledMcpServers,
+    knownMcpServers,
+  ])
 
   const enabledMcpServers = useMemo(
     () =>

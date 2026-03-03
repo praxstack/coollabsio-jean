@@ -352,7 +352,7 @@ export function useSessionStatePersistence() {
     }
 
     // Load enabled MCP servers override
-    if (session.enabled_mcp_servers) {
+    if (session.enabled_mcp_servers !== undefined) {
       updates.enabledMcpServers = {
         ...currentState.enabledMcpServers,
         [activeSessionId]: session.enabled_mcp_servers,

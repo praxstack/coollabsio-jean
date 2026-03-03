@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use super::naming::{spawn_naming_task, NamingRequest};
-use super::registry::cancel_process;
+use super::registry::{cancel_process, cancel_process_if_running};
 use super::run_log;
 use super::storage::{
     delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
@@ -566,8 +566,9 @@ pub async fn close_session(
 ) -> Result<Option<String>, String> {
     log::trace!("Closing session: {session_id}");
 
-    // Cancel any running process first (outside lock - doesn't touch sessions file)
-    let _ = cancel_process(&app, &session_id, &worktree_id);
+    // Cancel only if a process is actively running — avoids spurious chat:cancelled events
+    // for idle sessions (e.g. those waiting for plan approval during clear-context flows).
+    let _ = cancel_process_if_running(&app, &session_id, &worktree_id);
 
     // Collect pasted file paths for cleanup (outside lock - read-only NDJSON access)
     let mut files_to_delete: Vec<String> = Vec::new();
@@ -645,8 +646,9 @@ pub async fn archive_session(
 ) -> Result<Option<String>, String> {
     log::trace!("Archiving session: {session_id}");
 
-    // Cancel any running process first (outside lock)
-    let _ = cancel_process(&app, &session_id, &worktree_id);
+    // Cancel only if a process is actively running — avoids spurious chat:cancelled events
+    // for idle sessions (e.g. those waiting for plan approval during clear-context flows).
+    let _ = cancel_process_if_running(&app, &session_id, &worktree_id);
 
     // Load messages from NDJSON to check if session has content (outside lock - read-only)
     let messages = run_log::load_session_messages(&app, &session_id).unwrap_or_default();
