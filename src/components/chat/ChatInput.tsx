@@ -204,7 +204,9 @@ export const ChatInput = memo(function ChatInput({
       onHasValueChangeRef.current?.(!isEmpty)
 
       // Auto-resize to fit content
-      resizeTextarea()
+      // Use rAF to ensure layout is complete (handles paste where DOM updates
+      // may not be fully flushed before scrollHeight is read)
+      requestAnimationFrame(() => resizeTextarea())
 
       // Sync pending files with @mentions in input
       // Remove any pending files whose @filename is no longer in the text
@@ -487,6 +489,8 @@ export const ChatInput = memo(function ChatInput({
                 .getState()
                 .setInputDraft(activeSessionId, textarea.value)
               onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
+              // onChange won't fire for direct DOM value set, resize manually
+              requestAnimationFrame(() => resizeTextarea())
             }
 
             const {
