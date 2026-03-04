@@ -20,6 +20,7 @@ import {
   ListTodo,
   CheckCircle2,
   Circle,
+  Wand2,
 } from 'lucide-react'
 import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
@@ -748,6 +749,40 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         label: 'Entered plan mode',
         detail: undefined,
         expandedContent: 'Switched to plan mode',
+      }
+    }
+
+    case 'Skill': {
+      const skillName = input.skill as string | undefined
+      const args = input.args
+      const argsDetail =
+        typeof args === 'string'
+          ? args
+          : args
+          ? JSON.stringify(args)
+          : undefined
+      const expandedArgs =
+        typeof args === 'string'
+          ? args
+          : args
+          ? JSON.stringify(args, null, 2)
+          : undefined
+      return {
+        icon: <Wand2 className="h-4 w-4 shrink-0 text-purple-500" />,
+        label: skillName ? `Skill: ${skillName}` : 'Skill',
+        detail: argsDetail,
+        expandedContent: (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <div className="font-medium">
+              {skillName ? `Skill: ${skillName}` : 'Skill'}
+            </div>
+            {expandedArgs && (
+              <pre className="whitespace-pre-wrap font-mono rounded bg-muted/50 px-2 py-1">
+                {expandedArgs}
+              </pre>
+            )}
+          </div>
+        ),
       }
     }
 
