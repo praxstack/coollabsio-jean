@@ -95,6 +95,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   // Project is only selected if it's the selected project AND no worktree is active
   const isSelected = selectedProjectId === project.id && !activeWorktreeId
+  const showStatusBadges = !isMobile && (isExpanded || isSelected)
 
   const handleClick = useCallback(() => {
     selectProject(project.id)
@@ -234,11 +235,17 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             </Tooltip>
           )}
 
-          {/* New issues indicator */}
-          <NewIssuesBadge projectPath={project.path} projectId={project.id} />
-          <OpenPRsBadge projectPath={project.path} projectId={project.id} />
-          <SecurityAlertsBadge projectPath={project.path} projectId={project.id} />
-          <FailedRunsBadge projectPath={project.path} />
+          {showStatusBadges && (
+            <div className="hidden items-center gap-1 sm:flex">
+              <NewIssuesBadge projectPath={project.path} projectId={project.id} />
+              <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+              <SecurityAlertsBadge
+                projectPath={project.path}
+                projectId={project.id}
+              />
+              <FailedRunsBadge projectPath={project.path} />
+            </div>
+          )}
 
           {/* Settings */}
           <Tooltip>

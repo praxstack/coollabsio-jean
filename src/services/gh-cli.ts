@@ -33,7 +33,7 @@ export const ghCliQueryKeys = {
 /**
  * Hook to check if GitHub CLI is installed and get its status
  */
-export function useGhCliStatus() {
+export function useGhCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ghCliQueryKeys.status(),
     queryFn: async (): Promise<GhCliStatus> => {
@@ -52,6 +52,7 @@ export function useGhCliStatus() {
         return { installed: false, version: null, path: null }
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
     refetchInterval: 1000 * 60 * 60, // Re-check every hour
@@ -92,7 +93,7 @@ export function useGhCliAuth(options?: { enabled?: boolean }) {
 /**
  * Hook to fetch available GitHub CLI versions from GitHub releases
  */
-export function useAvailableGhVersions() {
+export function useAvailableGhVersions(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ghCliQueryKeys.versions(),
     queryFn: async (): Promise<GhReleaseInfo[]> => {
@@ -124,6 +125,7 @@ export function useAvailableGhVersions() {
         throw error
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30, // 30 minutes
   })

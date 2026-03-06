@@ -5,7 +5,7 @@
  * with buttons to update directly.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   useClaudeCliStatus,
@@ -23,6 +23,7 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { isNewerVersion } from '@/lib/version-utils'
 import { logger } from '@/lib/logger'
+import { isNativeApp } from '@/lib/environment'
 
 interface CliUpdateInfo {
   type: 'claude' | 'gh' | 'codex' | 'opencode'
@@ -43,19 +44,33 @@ const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
  * Should be called once in App.tsx.
  */
 export function useCliVersionCheck() {
-  const { data: claudeStatus, isLoading: claudeLoading } = useClaudeCliStatus()
-  const { data: ghStatus, isLoading: ghLoading } = useGhCliStatus()
-  const { data: codexStatus, isLoading: codexLoading } = useCodexCliStatus()
+  const shouldCheck = isNativeApp()
+
+  // Defer version fetches (GitHub API) by 10s — they're only for update toasts,
+  // no reason to compete with startup-critical queries.
+  const [versionCheckReady, setVersionCheckReady] = useState(false)
+  useEffect(() => {
+    if (!shouldCheck) return
+    const timer = setTimeout(() => setVersionCheckReady(true), 10_000)
+    return () => clearTimeout(timer)
+  }, [shouldCheck])
+
+  const { data: claudeStatus, isLoading: claudeLoading } =
+    useClaudeCliStatus({ enabled: shouldCheck })
+  const { data: ghStatus, isLoading: ghLoading } =
+    useGhCliStatus({ enabled: shouldCheck })
+  const { data: codexStatus, isLoading: codexLoading } =
+    useCodexCliStatus({ enabled: shouldCheck })
   const { data: opencodeStatus, isLoading: opencodeLoading } =
-    useOpencodeCliStatus()
+    useOpencodeCliStatus({ enabled: shouldCheck })
   const { data: claudeVersions, isLoading: claudeVersionsLoading } =
-    useAvailableCliVersions()
+    useAvailableCliVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: ghVersions, isLoading: ghVersionsLoading } =
-    useAvailableGhVersions()
+    useAvailableGhVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: codexVersions, isLoading: codexVersionsLoading } =
-    useAvailableCodexVersions()
+    useAvailableCodexVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: opencodeVersions, isLoading: opencodeVersionsLoading } =
-    useAvailableOpencodeVersions()
+    useAvailableOpencodeVersions({ enabled: shouldCheck && versionCheckReady })
 
   // Track which update pairs we've already shown notifications for
   // Format: "type:currentVersion→latestVersion"

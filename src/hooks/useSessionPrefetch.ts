@@ -4,6 +4,7 @@ import { invoke } from '@/lib/transport'
 import { prefetchSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Project, Worktree } from '@/types/projects'
+import { isNativeApp } from '@/lib/environment'
 
 /**
  * Prefetch sessions for all projects on app startup.
@@ -19,6 +20,7 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
   const hasFetchedRef = useRef(false)
 
   useEffect(() => {
+    if (!isNativeApp()) return
     if (hasFetchedRef.current || !projects || projects.length === 0) return
     hasFetchedRef.current = true
 

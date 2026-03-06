@@ -48,7 +48,7 @@ function getUsageRefetchInterval(snapshot?: ClaudeUsageSnapshot): number {
 /**
  * Hook to check if Claude CLI is installed and get its status
  */
-export function useClaudeCliStatus() {
+export function useClaudeCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: claudeCliQueryKeys.status(),
     queryFn: async (): Promise<ClaudeCliStatus> => {
@@ -69,6 +69,7 @@ export function useClaudeCliStatus() {
         return { installed: false, version: null, path: null, supports_auth_command: false }
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
     refetchInterval: 1000 * 60 * 60, // Re-check every hour
@@ -128,7 +129,7 @@ export function useClaudeUsage(options?: { enabled?: boolean }) {
 /**
  * Hook to fetch available Claude CLI versions from GitHub
  */
-export function useAvailableCliVersions() {
+export function useAvailableCliVersions(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: claudeCliQueryKeys.versions(),
     queryFn: async (): Promise<ReleaseInfo[]> => {
@@ -160,6 +161,7 @@ export function useAvailableCliVersions() {
         throw error
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30, // 30 minutes
   })

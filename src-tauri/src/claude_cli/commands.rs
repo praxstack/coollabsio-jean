@@ -131,13 +131,19 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
         }
     };
 
-    // Check if the CLI supports the `auth` subcommand (older versions lack it)
-    let supports_auth_command = silent_command(&binary_path)
-        .args(["auth", "--help"])
-        .output()
-        .map(|o| o.status.success())
+    // Infer auth support from version instead of spawning another process.
+    // The `auth` subcommand was added in Claude CLI ~1.0.16; all 1.x+ versions have it.
+    let supports_auth_command = version
+        .as_ref()
+        .map(|v| {
+            v.split('.')
+                .next()
+                .and_then(|major| major.parse::<u32>().ok())
+                .unwrap_or(0)
+                >= 1
+        })
         .unwrap_or(false);
-    log::trace!("Claude CLI supports auth command: {supports_auth_command}");
+    log::trace!("Claude CLI supports auth command: {supports_auth_command} (inferred from version)");
 
     Ok(ClaudeCliStatus {
         installed: true,

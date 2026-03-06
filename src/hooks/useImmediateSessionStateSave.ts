@@ -3,6 +3,7 @@ import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import type { LabelData } from '@/types/chat'
+import { isSessionStateHydrating } from '@/lib/session-state-hydration'
 
 /**
  * Saves reviewing/waiting state immediately when it changes.
@@ -24,6 +25,13 @@ export function useImmediateSessionStateSave() {
     prevLabelsRef.current = initialState.sessionLabels
 
     const unsubscribe = useChatStore.subscribe(state => {
+      if (isSessionStateHydrating()) {
+        prevReviewingRef.current = state.reviewingSessions
+        prevWaitingRef.current = state.waitingForInputSessionIds
+        prevLabelsRef.current = state.sessionLabels
+        return
+      }
+
       const {
         reviewingSessions,
         waitingForInputSessionIds,

@@ -37,6 +37,10 @@ import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
+import {
+  beginSessionStateHydration,
+  endSessionStateHydration,
+} from './lib/session-state-hydration'
 
 /** Loading screen shown while preloading initial data (browser mode only). */
 function WebLoadingScreen() {
@@ -259,7 +263,12 @@ function App() {
           }
         }
         if (Object.keys(storeUpdates).length > 0) {
-          useChatStore.setState(storeUpdates)
+          beginSessionStateHydration()
+          try {
+            useChatStore.setState(storeUpdates)
+          } finally {
+            endSessionStateHydration()
+          }
         }
       }
       // Seed active sessions (with full chat history/messages)

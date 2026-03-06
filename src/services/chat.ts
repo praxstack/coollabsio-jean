@@ -4,6 +4,10 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { generateId } from '@/lib/uuid'
+import {
+  beginSessionStateHydration,
+  endSessionStateHydration,
+} from '@/lib/session-state-hydration'
 import type {
   AllSessionsResponse,
   ArchivedSessionEntry,
@@ -247,7 +251,12 @@ export async function prefetchSessions(
       }
     }
     if (Object.keys(storeUpdates).length > 0) {
-      useChatStore.setState(storeUpdates)
+      beginSessionStateHydration()
+      try {
+        useChatStore.setState(storeUpdates)
+      } finally {
+        endSessionStateHydration()
+      }
     }
 
     logger.debug('Prefetched sessions', {

@@ -24,6 +24,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useUnreadCount } from './useUnreadCount'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { Session } from '@/types/chat'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 function isUnread(session: Session): boolean {
   if (session.archived_at) return false
@@ -104,6 +105,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const contentRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
   const queryClient = useQueryClient()
   const unreadCount = useUnreadCount()
   const { data: allSessions, isLoading } = useAllSessions(open)
@@ -362,9 +364,11 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
             <BellDot className="h-3.5 w-3.5 shrink-0 animate-[bell-ring_2s_ease-in-out_infinite]" />
             {unreadCount} finished{' '}
             {unreadCount === 1 ? 'session' : 'sessions'}
-            <Kbd className="ml-1 h-4 px-1 text-[10px] opacity-60">
-              {formatShortcutDisplay('mod+shift+f')}
-            </Kbd>
+            {!isMobile && (
+              <Kbd className="ml-1 h-4 px-1 text-[10px] opacity-60">
+                {formatShortcutDisplay('mod+shift+f')}
+              </Kbd>
+            )}
           </button>
         </div>
       </PopoverTrigger>

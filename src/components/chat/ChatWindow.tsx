@@ -686,6 +686,7 @@ export function ChatWindow({
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const clearChatInputStateRef = useRef<(() => void) | null>(null)
   // PERFORMANCE: Refs for session/worktree IDs and settings to avoid recreating callbacks when session changes
   // This enables stable callback references that read current values from refs
   const activeSessionIdRef = useRef(activeSessionId)
@@ -1464,6 +1465,7 @@ export function ChatWindow({
     sessionsData,
     setInputDraft,
     clearInputDraft,
+    clearChatInputState: () => clearChatInputStateRef.current?.(),
   })
 
   // Note: Queue processing moved to useQueueProcessor hook in App.tsx
@@ -2251,6 +2253,11 @@ export function ChatWindow({
                                 onSwitchBackendWithTab={handleTabBackendSwitch}
                                 onCommandExecute={handleCommandExecute}
                                 onHasValueChange={setHasInputValue}
+                                onRegisterClearHandler={(
+                                  handler: (() => void) | null
+                                ) => {
+                                  clearChatInputStateRef.current = handler
+                                }}
                                 formRef={formRef}
                                 inputRef={inputRef}
                               />

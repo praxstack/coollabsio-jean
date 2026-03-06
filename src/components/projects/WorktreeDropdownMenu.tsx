@@ -1,17 +1,24 @@
 import {
+  Activity,
   Archive,
+  AlertCircle,
+  CircleDot,
   Code,
   FileJson,
   FolderOpen,
+  GitPullRequestArrow,
   MoreHorizontal,
   Play,
   Plus,
   Settings,
+  ShieldAlert,
   Sparkles,
   Terminal,
   Trash2,
   X,
 } from 'lucide-react'
+import { useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,19 +39,34 @@ import {
 import { Button } from '@/components/ui/button'
 import type { Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import { ghCliQueryKeys } from '@/services/gh-cli'
+import {
+  useDependabotAlerts,
+  useGitHubIssues,
+  useGitHubPRs,
+  useRepositoryAdvisories,
+  useWorkflowRuns,
+} from '@/services/github'
 import { isNativeApp } from '@/lib/environment'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
+import type { GhAuthStatus } from '@/types/gh-cli'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
 interface WorktreeDropdownMenuProps {
   worktree: Worktree
   projectId: string
+  projectPath: string
 }
+
+const BADGE_STALE_TIME = 5 * 60 * 1000
 
 export function WorktreeDropdownMenu({
   worktree,
   projectId,
+  projectPath,
 }: WorktreeDropdownMenuProps) {
+  const queryClient = useQueryClient()
   const {
     showDeleteConfirm,
     setShowDeleteConfirm,
@@ -61,6 +83,66 @@ export function WorktreeDropdownMenu({
     handleOpenJeanConfig,
     handleGenerateRecap,
   } = useWorktreeMenuActions({ worktree, projectId })
+  const authData = queryClient.getQueryData<GhAuthStatus>(ghCliQueryKeys.auth())
+  const isGitHubAuthenticated = authData?.authenticated ?? false
+  const { data: issueResult } = useGitHubIssues(projectPath, 'open', {
+    enabled: isGitHubAuthenticated,
+    staleTime: BADGE_STALE_TIME,
+  })
+  const { data: prs } = useGitHubPRs(projectPath, 'open', {
+    enabled: isGitHubAuthenticated,
+    staleTime: BADGE_STALE_TIME,
+  })
+  const { data: alerts } = useDependabotAlerts(projectPath, 'open', {
+    enabled: isGitHubAuthenticated,
+    staleTime: BADGE_STALE_TIME,
+  })
+  const { data: advisories } = useRepositoryAdvisories(projectPath, undefined, {
+    enabled: isGitHubAuthenticated,
+    staleTime: BADGE_STALE_TIME,
+  })
+  const { data: workflowRuns } = useWorkflowRuns(projectPath, undefined, {
+    enabled: isGitHubAuthenticated,
+    staleTime: BADGE_STALE_TIME,
+  })
+  const issueCount = issueResult?.totalCount ?? 0
+  const prCount = prs?.length ?? 0
+  const securityCount =
+    (alerts?.length ?? 0) +
+    (advisories?.filter(a => a.state === 'draft' || a.state === 'triage')
+      .length ?? 0)
+  const workflowRunCount = workflowRuns?.runs.length ?? 0
+  const failedWorkflowCount = workflowRuns?.failedCount ?? 0
+  const hasGitHubStatusItems =
+    issueCount > 0 || prCount > 0 || securityCount > 0 || workflowRunCount > 0
+
+  const handleOpenIssues = useCallback(() => {
+    useProjectsStore.getState().selectProject(projectId)
+    const { setNewWorktreeModalDefaultTab, setNewWorktreeModalOpen } =
+      useUIStore.getState()
+    setNewWorktreeModalDefaultTab('issues')
+    setNewWorktreeModalOpen(true)
+  }, [projectId])
+
+  const handleOpenPRs = useCallback(() => {
+    useProjectsStore.getState().selectProject(projectId)
+    const { setNewWorktreeModalDefaultTab, setNewWorktreeModalOpen } =
+      useUIStore.getState()
+    setNewWorktreeModalDefaultTab('prs')
+    setNewWorktreeModalOpen(true)
+  }, [projectId])
+
+  const handleOpenSecurity = useCallback(() => {
+    useProjectsStore.getState().selectProject(projectId)
+    const { setNewWorktreeModalDefaultTab, setNewWorktreeModalOpen } =
+      useUIStore.getState()
+    setNewWorktreeModalDefaultTab('security')
+    setNewWorktreeModalOpen(true)
+  }, [projectId])
+
+  const handleOpenWorkflowRuns = useCallback(() => {
+    useUIStore.getState().setWorkflowRunsModalOpen(true, projectPath)
+  }, [projectPath])
 
   return (
     <>
@@ -110,6 +192,42 @@ export function WorktreeDropdownMenu({
             <DropdownMenuItem onClick={handleGenerateRecap}>
               <Sparkles className="mr-2 h-4 w-4" />
               Generate Recap
+            </DropdownMenuItem>
+          )}
+
+          {hasGitHubStatusItems && <DropdownMenuSeparator />}
+
+          {issueCount > 0 && (
+            <DropdownMenuItem onClick={handleOpenIssues}>
+              <CircleDot className="mr-2 h-4 w-4 text-green-600" />
+              {issueCount} Open Issue{issueCount === 1 ? '' : 's'}
+            </DropdownMenuItem>
+          )}
+
+          {prCount > 0 && (
+            <DropdownMenuItem onClick={handleOpenPRs}>
+              <GitPullRequestArrow className="mr-2 h-4 w-4 text-blue-600" />
+              {prCount} Open PR{prCount === 1 ? '' : 's'}
+            </DropdownMenuItem>
+          )}
+
+          {securityCount > 0 && (
+            <DropdownMenuItem onClick={handleOpenSecurity}>
+              <ShieldAlert className="mr-2 h-4 w-4 text-orange-600" />
+              {securityCount} Security Alert{securityCount === 1 ? '' : 's'}
+            </DropdownMenuItem>
+          )}
+
+          {workflowRunCount > 0 && (
+            <DropdownMenuItem onClick={handleOpenWorkflowRuns}>
+              {failedWorkflowCount > 0 ? (
+                <AlertCircle className="mr-2 h-4 w-4 text-red-600" />
+              ) : (
+                <Activity className="mr-2 h-4 w-4" />
+              )}
+              {failedWorkflowCount > 0
+                ? `${failedWorkflowCount} Failed Workflow Run${failedWorkflowCount === 1 ? '' : 's'}`
+                : 'Workflow Runs'}
             </DropdownMenuItem>
           )}
 

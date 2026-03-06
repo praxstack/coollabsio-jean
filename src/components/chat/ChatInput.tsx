@@ -44,6 +44,7 @@ interface ChatInputProps {
   onSwitchBackendWithTab?: () => void
   onCommandExecute?: (command: ClaudeCommand) => void
   onHasValueChange?: (hasValue: boolean) => void
+  onRegisterClearHandler?: (clearHandler: (() => void) | null) => void
   formRef: React.RefObject<HTMLFormElement | null>
   inputRef: React.RefObject<HTMLTextAreaElement | null>
 }
@@ -60,6 +61,7 @@ export const ChatInput = memo(function ChatInput({
   onSwitchBackendWithTab,
   onCommandExecute,
   onHasValueChange,
+  onRegisterClearHandler,
   formRef,
   inputRef,
 }: ChatInputProps) {
@@ -184,6 +186,22 @@ export const ChatInput = memo(function ChatInput({
       }
     })
   }, [activeSessionId, inputRef])
+
+  const clearInputState = useCallback(() => {
+    clearTimeout(debouncedSaveRef.current)
+    if (inputRef.current) {
+      inputRef.current.value = ''
+      inputRef.current.style.height = 'auto'
+    }
+    valueRef.current = ''
+    setShowHint(true)
+    onHasValueChangeRef.current?.(false)
+  }, [inputRef])
+
+  useEffect(() => {
+    onRegisterClearHandler?.(clearInputState)
+    return () => onRegisterClearHandler?.(null)
+  }, [clearInputState, onRegisterClearHandler])
 
   // Handle textarea value changes
   const handleChange = useCallback(

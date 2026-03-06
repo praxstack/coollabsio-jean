@@ -11,7 +11,6 @@ import {
 } from 'react'
 import {
   Archive,
-  ArrowLeft,
   Code,
   Eye,
   EyeOff,
@@ -270,7 +269,12 @@ export function SessionChatModal({
   const planFilePaths = useChatStore(state => state.planFilePaths)
   const sessionDigests = useChatStore(state => state.sessionDigests)
   const storeState = useMemo(
-    () => ({ sendingSessionIds, executionModes, executingModes, reviewingSessions }),
+    () => ({
+      sendingSessionIds,
+      executionModes,
+      executingModes,
+      reviewingSessions,
+    }),
     [sendingSessionIds, executionModes, executingModes, reviewingSessions]
   )
 
@@ -438,7 +442,9 @@ export function SessionChatModal({
     worktreePath,
     sessions,
     removalBehavior: preferences?.removal_behavior,
-    onLastSessionDeleted: onCloseWorktree ? handleCloseWorktreeFromModal : undefined,
+    onLastSessionDeleted: onCloseWorktree
+      ? handleCloseWorktreeFromModal
+      : undefined,
   })
 
   // CMD+W: close the active session tab, or close modal if last tab
@@ -635,7 +641,10 @@ export function SessionChatModal({
         triggerImmediateGitPoll()
         if (project) fetchWorktreesStatus(project.id)
         if (result.fellBack) {
-          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+          toast.warning(
+            'Could not push to PR branch, pushed to new branch instead',
+            { id: toastId }
+          )
         } else {
           toast.success('Changes pushed', { id: toastId })
         }
@@ -706,209 +715,72 @@ export function SessionChatModal({
         key={worktreeId}
         className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-2 pt-[3px]"
       >
-          <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 sm:hidden"
-                  onClick={handleClose}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <h2 className="text-sm font-medium shrink-0">
-                  {project && (
-                    <span className="text-muted-foreground font-normal">
-                      <button
-                        type="button"
-                        className="hover:text-foreground transition-colors cursor-pointer text-foreground text-lg font-semibold"
-                        onClick={handleClose}
-                      >
-                        {project.name}
-                      </button>
-                      <span className="mx-1.5 text-muted-foreground/50">›</span>
-                    </span>
-                  )}
-                  {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
-                </h2>
-                <GitStatusBadges
-                  behindCount={behindCount}
-                  unpushedCount={unpushedCount}
-                  diffAdded={uncommittedAdded}
-                  diffRemoved={uncommittedRemoved}
-                  branchDiffAdded={isBase ? 0 : branchDiffAdded}
-                  branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
-                  onPull={handlePull}
-                  onPush={handlePush}
-                  onDiffClick={handleUncommittedDiffClick}
-                  onBranchDiffClick={handleBranchDiffClick}
-                />
+        <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-sm font-medium shrink-0">
                 {project && (
-                  <>
-                    <NewIssuesBadge projectPath={project.path} projectId={project.id} />
-                    <OpenPRsBadge projectPath={project.path} projectId={project.id} />
-                    <FailedRunsBadge projectPath={project.path} />
-                  </>
+                  <span className="text-muted-foreground font-normal">
+                    <button
+                      type="button"
+                      className="hover:text-foreground transition-colors cursor-pointer text-foreground text-lg font-semibold"
+                      onClick={handleClose}
+                    >
+                      {project.name}
+                    </button>
+                    <span className="mx-1.5 text-muted-foreground/50">›</span>
+                  </span>
                 )}
-                {worktree && project && (
-                  <WorktreeDropdownMenu
-                    worktree={worktree}
+                {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
+              </h2>
+              <GitStatusBadges
+                behindCount={behindCount}
+                unpushedCount={unpushedCount}
+                diffAdded={uncommittedAdded}
+                diffRemoved={uncommittedRemoved}
+                branchDiffAdded={isBase ? 0 : branchDiffAdded}
+                branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
+                onPull={handlePull}
+                onPush={handlePush}
+                onDiffClick={handleUncommittedDiffClick}
+                onBranchDiffClick={handleBranchDiffClick}
+              />
+              {project && (
+                <div className="hidden items-center gap-2 sm:flex">
+                  <NewIssuesBadge
+                    projectPath={project.path}
                     projectId={project.id}
                   />
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {/* Desktop: inline action buttons */}
-                {isNativeApp() && (
-                  <div className="hidden sm:flex items-center gap-1">
-                    <OpenInButton
-                      worktreePath={worktreePath}
-                      branch={worktree?.branch}
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => {
-                            const { reviewResults, toggleReviewSidebar } =
-                              useChatStore.getState()
-                            const hasReviewResults =
-                              currentSessionId &&
-                              (reviewResults[currentSessionId] ||
-                                currentSession?.review_results)
-                            if (hasReviewResults) {
-                              if (
-                                currentSessionId &&
-                                !reviewResults[currentSessionId] &&
-                                currentSession?.review_results
-                              ) {
-                                useChatStore
-                                  .getState()
-                                  .setReviewResults(
-                                    currentSessionId,
-                                    currentSession.review_results
-                                  )
-                              }
-                              toggleReviewSidebar()
-                            } else {
-                              window.dispatchEvent(
-                                new CustomEvent('magic-command', {
-                                  detail: {
-                                    command: 'review',
-                                    sessionId: currentSessionId,
-                                  },
-                                })
-                              )
-                            }
-                          }}
-                        >
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Review</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => {
-                            useTerminalStore
-                              .getState()
-                              .toggleModalTerminal(worktreeId)
-                          }}
-                        >
-                          <Terminal className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Terminal</TooltipContent>
-                    </Tooltip>
-                    {runScript && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={handleRun}
-                          >
-                            <Play className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Run</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                )}
-                {/* Mobile: overflow menu */}
-                {isNativeApp() && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                  <OpenPRsBadge
+                    projectPath={project.path}
+                    projectId={project.id}
+                  />
+                  <FailedRunsBadge projectPath={project.path} />
+                </div>
+              )}
+              {worktree && project && (
+                <WorktreeDropdownMenu
+                  worktree={worktree}
+                  projectId={project.id}
+                  projectPath={project.path}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Desktop: inline action buttons */}
+              {isNativeApp() && (
+                <div className="hidden sm:flex items-center gap-1">
+                  <OpenInButton
+                    worktreePath={worktreePath}
+                    branch={worktree?.branch}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 flex sm:hidden"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          openInEditor.mutate({
-                            worktreePath,
-                            editor: preferences?.editor,
-                          })
-                        }
-                      >
-                        <Code className="h-4 w-4" />
-                        {getOpenInDefaultLabel(
-                          'editor',
-                          preferences?.editor,
-                          preferences?.terminal
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          openInTerminal.mutate({
-                            worktreePath,
-                            terminal: preferences?.terminal,
-                          })
-                        }
-                      >
-                        <Terminal className="h-4 w-4" />
-                        {getOpenInDefaultLabel(
-                          'terminal',
-                          preferences?.editor,
-                          preferences?.terminal
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => openInFinder.mutate(worktreePath)}
-                      >
-                        <FolderOpen className="h-4 w-4" />
-                        Finder
-                      </DropdownMenuItem>
-                      {worktree?.branch && (
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            openOnGitHub.mutate({
-                              repoPath: worktreePath,
-                              branch: worktree.branch,
-                            })
-                          }
-                        >
-                          <Github className="h-4 w-4" />
-                          GitHub
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={() => {
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
                           const { reviewResults, toggleReviewSidebar } =
                             useChatStore.getState()
                           const hasReviewResults =
@@ -941,299 +813,428 @@ export function SessionChatModal({
                           }
                         }}
                       >
-                        <Eye className="h-4 w-4" />
-                        Review
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() =>
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Review</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
                           useTerminalStore
                             .getState()
                             .toggleModalTerminal(worktreeId)
+                        }}
+                      >
+                        <Terminal className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Terminal</TooltipContent>
+                  </Tooltip>
+                  {runScript && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleRun}
+                        >
+                          <Play className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Run</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              )}
+              {/* Mobile: overflow menu */}
+              {isNativeApp() && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 flex sm:hidden"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        openInEditor.mutate({
+                          worktreePath,
+                          editor: preferences?.editor,
+                        })
+                      }
+                    >
+                      <Code className="h-4 w-4" />
+                      {getOpenInDefaultLabel(
+                        'editor',
+                        preferences?.editor,
+                        preferences?.terminal
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        openInTerminal.mutate({
+                          worktreePath,
+                          terminal: preferences?.terminal,
+                        })
+                      }
+                    >
+                      <Terminal className="h-4 w-4" />
+                      {getOpenInDefaultLabel(
+                        'terminal',
+                        preferences?.editor,
+                        preferences?.terminal
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => openInFinder.mutate(worktreePath)}
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      Finder
+                    </DropdownMenuItem>
+                    {worktree?.branch && (
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          openOnGitHub.mutate({
+                            repoPath: worktreePath,
+                            branch: worktree.branch,
+                          })
                         }
+                      >
+                        <Github className="h-4 w-4" />
+                        GitHub
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const { reviewResults, toggleReviewSidebar } =
+                          useChatStore.getState()
+                        const hasReviewResults =
+                          currentSessionId &&
+                          (reviewResults[currentSessionId] ||
+                            currentSession?.review_results)
+                        if (hasReviewResults) {
+                          if (
+                            currentSessionId &&
+                            !reviewResults[currentSessionId] &&
+                            currentSession?.review_results
+                          ) {
+                            useChatStore
+                              .getState()
+                              .setReviewResults(
+                                currentSessionId,
+                                currentSession.review_results
+                              )
+                          }
+                          toggleReviewSidebar()
+                        } else {
+                          window.dispatchEvent(
+                            new CustomEvent('magic-command', {
+                              detail: {
+                                command: 'review',
+                                sessionId: currentSessionId,
+                              },
+                            })
+                          )
+                        }
+                      }}
+                    >
+                      <Eye className="h-4 w-4" />
+                      Review
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        useTerminalStore
+                          .getState()
+                          .toggleModalTerminal(worktreeId)
+                      }
+                    >
+                      <Terminal className="h-4 w-4" />
+                      Terminal
+                    </DropdownMenuItem>
+                    {runScript && (
+                      <DropdownMenuItem onSelect={handleRun}>
+                        <Play className="h-4 w-4" />
+                        Run
+                      </DropdownMenuItem>
+                    )}
+                    {currentResumeCommand && (
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          void navigator.clipboard
+                            .writeText(currentResumeCommand)
+                            .then(() => toast.success('Resume command copied'))
+                            .catch(() =>
+                              toast.error('Failed to copy resume command')
+                            )
+                        }}
                       >
                         <Terminal className="h-4 w-4" />
-                        Terminal
+                        Copy Resume Command
                       </DropdownMenuItem>
-                      {runScript && (
-                        <DropdownMenuItem onSelect={handleRun}>
-                          <Play className="h-4 w-4" />
-                          Run
-                        </DropdownMenuItem>
-                      )}
-                      {currentResumeCommand && (
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            void navigator.clipboard
-                              .writeText(currentResumeCommand)
-                              .then(() => toast.success('Resume command copied'))
-                              .catch(() =>
-                                toast.error('Failed to copy resume command')
-                              )
-                          }}
-                        >
-                          <Terminal className="h-4 w-4" />
-                          Copy Resume Command
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        disabled={!hasRecap}
-                        onSelect={() =>
-                          window.dispatchEvent(new CustomEvent('open-recap'))
-                        }
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Recap
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={!hasPlan}
-                        onSelect={() =>
-                          window.dispatchEvent(new CustomEvent('open-plan'))
-                        }
-                      >
-                        <FileText className="h-4 w-4" />
-                        Plan
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                <ModalCloseButton onClick={handleClose} />
-              </div>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={!hasRecap}
+                      onSelect={() =>
+                        window.dispatchEvent(new CustomEvent('open-recap'))
+                      }
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Recap
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!hasPlan}
+                      onSelect={() =>
+                        window.dispatchEvent(new CustomEvent('open-plan'))
+                      }
+                    >
+                      <FileText className="h-4 w-4" />
+                      Plan
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <ModalCloseButton onClick={handleClose} />
             </div>
           </div>
+        </div>
 
-          {/* Session tabs */}
-          {sessions.length > 0 && (
-            <div className="shrink-0 border-b flex items-center gap-0.5 pr-4 relative">
-              {hasWaitingLeft && (
-                <button
-                  type="button"
-                  onClick={() => scrollToFirstWaiting('left')}
-                  className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-r z-10 cursor-pointer"
-                  aria-label="Scroll to waiting session"
-                />
-              )}
-              {hasWaitingRight && (
-                <button
-                  type="button"
-                  onClick={() => scrollToFirstWaiting('right')}
-                  className="absolute right-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-l z-10 cursor-pointer"
-                  aria-label="Scroll to waiting session"
-                />
-              )}
-              <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
-                <div className="flex items-center gap-1.5 py-1 px-3">
-                  {sortedSessions.map((session, idx) => {
-                    const isActive = session.id === currentSessionId
-                    const status = getSessionStatus(session, storeState)
-                    const config = statusConfig[status]
-                    const chatState = useChatStore.getState()
-                    const sessionLabel = chatState.sessionLabels[session.id]
-                    const sessionHasPlan =
-                      !!planFilePaths[session.id] || !!session.plan_file_path
-                    const sessionHasRecap =
-                      !!sessionDigests[session.id] || !!session.digest
-                    const resumeCommand = getResumeCommand(session)
-                    return (
-                      <ContextMenu key={session.id}>
-                        <ContextMenuTrigger asChild>
-                          <button
-                            data-session-id={session.id}
-                            onClick={() => handleTabClick(session.id)}
-                            onDoubleClick={() =>
-                              handleStartRenameImmediate(
-                                session.id,
-                                session.name
-                              )
-                            }
-                            className={cn(
-                              'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap border border-transparent',
-                              isActive
-                                ? 'bg-muted text-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                              status === 'waiting' &&
+        {/* Session tabs */}
+        {sessions.length > 0 && (
+          <div className="shrink-0 border-b flex items-center gap-0.5 pr-4 relative">
+            {hasWaitingLeft && (
+              <button
+                type="button"
+                onClick={() => scrollToFirstWaiting('left')}
+                className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-r z-10 cursor-pointer"
+                aria-label="Scroll to waiting session"
+              />
+            )}
+            {hasWaitingRight && (
+              <button
+                type="button"
+                onClick={() => scrollToFirstWaiting('right')}
+                className="absolute right-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-l z-10 cursor-pointer"
+                aria-label="Scroll to waiting session"
+              />
+            )}
+            <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
+              <div className="flex items-center gap-1.5 py-1 px-3">
+                {sortedSessions.map((session, idx) => {
+                  const isActive = session.id === currentSessionId
+                  const status = getSessionStatus(session, storeState)
+                  const config = statusConfig[status]
+                  const chatState = useChatStore.getState()
+                  const sessionLabel = chatState.sessionLabels[session.id]
+                  const sessionHasPlan =
+                    !!planFilePaths[session.id] || !!session.plan_file_path
+                  const sessionHasRecap =
+                    !!sessionDigests[session.id] || !!session.digest
+                  const resumeCommand = getResumeCommand(session)
+                  return (
+                    <ContextMenu key={session.id}>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          data-session-id={session.id}
+                          onClick={() => handleTabClick(session.id)}
+                          onDoubleClick={() =>
+                            handleStartRenameImmediate(session.id, session.name)
+                          }
+                          className={cn(
+                            'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap border border-transparent',
+                            isActive
+                              ? 'bg-muted text-foreground'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                            status === 'waiting' &&
                               'border-dashed border-yellow-500 dark:border-yellow-400'
-                            )}
-                          >
-                            <StatusIndicator
-                              status={config.indicatorStatus}
-                              variant={config.indicatorVariant}
-                              className="h-1.5 w-1.5"
-                            />
-                            {idx < 9 && (
-                              <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
-                                ⌘{idx + 1}
-                              </kbd>
-                            )}
-                            {renamingSessionId === session.id ? (
-                              <input
-                                ref={renameInputRef}
-                                type="text"
-                                value={renameValue}
-                                onChange={e => setRenameValue(e.target.value)}
-                                onBlur={() => handleRenameSubmit(session.id)}
-                                onKeyDown={e =>
-                                  handleRenameKeyDown(e, session.id)
-                                }
-                                onClick={e => e.stopPropagation()}
-                                className="w-full min-w-0 bg-transparent text-xs outline-none"
-                              />
-                            ) : (
-                              session.name
-                            )}
-                            {renamingSessionId !== session.id && (
-                                <DismissButton
-                                  tooltip={
-                                    sessions.filter(s => !s.archived_at)
-                                      .length <= 1
-                                      ? 'Close worktree'
-                                      : 'Remove session'
-                                  }
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    const activeSessions = sessions.filter(
-                                      s => !s.archived_at,
-                                    )
-                                    if (activeSessions.length <= 1) {
-                                      const action = () => {
-                                        handleDeleteSession(session.id)
-                                        onClose()
-                                      }
-                                      const sessionIsEmpty = !session.message_count
-                                      if (
-                                        preferences?.confirm_session_close !==
-                                        false && !sessionIsEmpty
-                                      ) {
-                                        pendingCloseAction.current = action
-                                        setCloseConfirmOpen(true)
-                                      } else {
-                                        action()
-                                      }
-                                    } else {
-                                      handleArchiveSession(session.id)
-                                    }
-                                  }}
-                                  className="ml-0.5 opacity-60 sm:opacity-0 sm:group-hover/tab:opacity-60 hover:!opacity-100"
-                                  size="xs"
-                                />
-                              )}
-                          </button>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent className="w-64">
-                          <ContextMenuItem
-                            onSelect={() =>
-                              handleStartRename(session.id, session.name)
-                            }
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Rename
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() => {
-                              setLabelTargetSessionId(session.id)
-                              setLabelModalOpen(true)
-                            }}
-                          >
-                            <Tag className="mr-2 h-4 w-4" />
-                            {sessionLabel ? 'Remove Label' : 'Add Label'}
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() => {
-                              const { reviewingSessions, setSessionReviewing } =
-                                useChatStore.getState()
-                              const isReviewing =
-                                reviewingSessions[session.id] ||
-                                !!session.review_results
-                              setSessionReviewing(session.id, !isReviewing)
-                            }}
-                          >
-                            {status === 'review' ? (
-                              <>
-                                <EyeOff className="mr-2 h-4 w-4" />
-                                Mark as Idle
-                              </>
-                            ) : (
-                              <>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Mark for Review
-                              </>
-                            )}
-                          </ContextMenuItem>
-                          {resumeCommand && (
-                            <ContextMenuItem
-                              onSelect={() => {
-                                void navigator.clipboard
-                                  .writeText(resumeCommand)
-                                  .then(() =>
-                                    toast.success('Resume command copied')
-                                  )
-                                  .catch(() =>
-                                    toast.error(
-                                      'Failed to copy resume command'
-                                    )
-                                  )
-                              }}
-                            >
-                              <Terminal className="mr-2 h-4 w-4" />
-                              Copy Resume Command
-                            </ContextMenuItem>
                           )}
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            disabled={!sessionHasRecap}
-                            onSelect={() => {
-                              useChatStore
-                                .getState()
-                                .setActiveSession(worktreeId, session.id)
-                              requestAnimationFrame(() => {
-                                window.dispatchEvent(
-                                  new CustomEvent('open-recap')
+                        >
+                          <StatusIndicator
+                            status={config.indicatorStatus}
+                            variant={config.indicatorVariant}
+                            className="h-1.5 w-1.5"
+                          />
+                          {idx < 9 && (
+                            <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
+                              ⌘{idx + 1}
+                            </kbd>
+                          )}
+                          {renamingSessionId === session.id ? (
+                            <input
+                              ref={renameInputRef}
+                              type="text"
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onBlur={() => handleRenameSubmit(session.id)}
+                              onKeyDown={e =>
+                                handleRenameKeyDown(e, session.id)
+                              }
+                              onClick={e => e.stopPropagation()}
+                              className="w-full min-w-0 bg-transparent text-xs outline-none"
+                            />
+                          ) : (
+                            session.name
+                          )}
+                          {renamingSessionId !== session.id && (
+                            <DismissButton
+                              tooltip={
+                                sessions.filter(s => !s.archived_at).length <= 1
+                                  ? 'Close worktree'
+                                  : 'Remove session'
+                              }
+                              onClick={e => {
+                                e.stopPropagation()
+                                const activeSessions = sessions.filter(
+                                  s => !s.archived_at
                                 )
-                              })
+                                if (activeSessions.length <= 1) {
+                                  const action = () => {
+                                    handleDeleteSession(session.id)
+                                    onClose()
+                                  }
+                                  const sessionIsEmpty = !session.message_count
+                                  if (
+                                    preferences?.confirm_session_close !==
+                                      false &&
+                                    !sessionIsEmpty
+                                  ) {
+                                    pendingCloseAction.current = action
+                                    setCloseConfirmOpen(true)
+                                  } else {
+                                    action()
+                                  }
+                                } else {
+                                  handleArchiveSession(session.id)
+                                }
+                              }}
+                              className="ml-0.5 opacity-60 sm:opacity-0 sm:group-hover/tab:opacity-60 hover:!opacity-100"
+                              size="xs"
+                            />
+                          )}
+                        </button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-64">
+                        <ContextMenuItem
+                          onSelect={() =>
+                            handleStartRename(session.id, session.name)
+                          }
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Rename
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => {
+                            setLabelTargetSessionId(session.id)
+                            setLabelModalOpen(true)
+                          }}
+                        >
+                          <Tag className="mr-2 h-4 w-4" />
+                          {sessionLabel ? 'Remove Label' : 'Add Label'}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => {
+                            const { reviewingSessions, setSessionReviewing } =
+                              useChatStore.getState()
+                            const isReviewing =
+                              reviewingSessions[session.id] ||
+                              !!session.review_results
+                            setSessionReviewing(session.id, !isReviewing)
+                          }}
+                        >
+                          {status === 'review' ? (
+                            <>
+                              <EyeOff className="mr-2 h-4 w-4" />
+                              Mark as Idle
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Mark for Review
+                            </>
+                          )}
+                        </ContextMenuItem>
+                        {resumeCommand && (
+                          <ContextMenuItem
+                            onSelect={() => {
+                              void navigator.clipboard
+                                .writeText(resumeCommand)
+                                .then(() =>
+                                  toast.success('Resume command copied')
+                                )
+                                .catch(() =>
+                                  toast.error('Failed to copy resume command')
+                                )
                             }}
                           >
-                            <Sparkles className="mr-2 h-4 w-4" />
-                            Recap
+                            <Terminal className="mr-2 h-4 w-4" />
+                            Copy Resume Command
                           </ContextMenuItem>
-                          <ContextMenuItem
-                            disabled={!sessionHasPlan}
-                            onSelect={() => {
-                              useChatStore
-                                .getState()
-                                .setActiveSession(worktreeId, session.id)
-                              requestAnimationFrame(() => {
-                                window.dispatchEvent(
-                                  new CustomEvent('open-plan')
-                                )
-                              })
-                            }}
-                          >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Plan
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() => handleArchiveSession(session.id)}
-                          >
-                            <Archive className="mr-2 h-4 w-4" />
-                            Archive Session
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            variant="destructive"
-                            onSelect={() => handleDeleteSession(session.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Session
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    )
-                  })}
-                </div>
-                <ScrollBar orientation="horizontal" className="h-1" />
-              </ScrollArea>
-              {!isMobile && (
-                <div className="flex items-center gap-0.5">
+                        )}
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          disabled={!sessionHasRecap}
+                          onSelect={() => {
+                            useChatStore
+                              .getState()
+                              .setActiveSession(worktreeId, session.id)
+                            requestAnimationFrame(() => {
+                              window.dispatchEvent(
+                                new CustomEvent('open-recap')
+                              )
+                            })
+                          }}
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Recap
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          disabled={!sessionHasPlan}
+                          onSelect={() => {
+                            useChatStore
+                              .getState()
+                              .setActiveSession(worktreeId, session.id)
+                            requestAnimationFrame(() => {
+                              window.dispatchEvent(new CustomEvent('open-plan'))
+                            })
+                          }}
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          Plan
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => handleArchiveSession(session.id)}
+                        >
+                          <Archive className="mr-2 h-4 w-4" />
+                          Archive Session
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          variant="destructive"
+                          onSelect={() => handleDeleteSession(session.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Session
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  )
+                })}
+              </div>
+              <ScrollBar orientation="horizontal" className="h-1" />
+            </ScrollArea>
+            {!isMobile && (
+              <div className="flex items-center gap-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -1268,58 +1269,58 @@ export function SessionChatModal({
                   </TooltipTrigger>
                   <TooltipContent>Plan (P)</TooltipContent>
                 </Tooltip>
-                </div>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 shrink-0"
-                    onClick={handleCreateSession}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>New session</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {currentSessionId && (
-              <ChatWindow
-                key={currentSessionId}
-                isModal
-                worktreeId={worktreeId}
-                worktreePath={worktreePath}
-              />
+              </div>
             )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 shrink-0"
+                  onClick={handleCreateSession}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New session</TooltipContent>
+            </Tooltip>
           </div>
+        )}
 
-          {/* Terminal side drawer */}
-          {isNativeApp() && (
-            <ModalTerminalDrawer
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {currentSessionId && (
+            <ChatWindow
+              key={currentSessionId}
+              isModal
               worktreeId={worktreeId}
               worktreePath={worktreePath}
             />
           )}
-          {diffRequest && (
-            <Suspense fallback={null}>
-              <GitDiffModal
-                diffRequest={diffRequest}
-                onClose={() => setDiffRequest(null)}
-                uncommittedStats={{
-                  added: uncommittedAdded,
-                  removed: uncommittedRemoved,
-                }}
-                branchStats={{
-                  added: branchDiffAdded,
-                  removed: branchDiffRemoved,
-                }}
-              />
-            </Suspense>
-          )}
+        </div>
+
+        {/* Terminal side drawer */}
+        {isNativeApp() && (
+          <ModalTerminalDrawer
+            worktreeId={worktreeId}
+            worktreePath={worktreePath}
+          />
+        )}
+        {diffRequest && (
+          <Suspense fallback={null}>
+            <GitDiffModal
+              diffRequest={diffRequest}
+              onClose={() => setDiffRequest(null)}
+              uncommittedStats={{
+                added: uncommittedAdded,
+                removed: uncommittedRemoved,
+              }}
+              branchStats={{
+                added: branchDiffAdded,
+                removed: branchDiffRemoved,
+              }}
+            />
+          </Suspense>
+        )}
       </div>
       <LabelModal
         isOpen={labelModalOpen}

@@ -48,7 +48,7 @@ function getUsageRefetchInterval(snapshot?: CodexUsageSnapshot): number {
 /**
  * Hook to check if Codex CLI is installed and get its status
  */
-export function useCodexCliStatus() {
+export function useCodexCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: codexCliQueryKeys.status(),
     queryFn: async (): Promise<CodexCliStatus> => {
@@ -63,6 +63,7 @@ export function useCodexCliStatus() {
         return { installed: false, version: null, path: null }
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     refetchInterval: 1000 * 60 * 60,
@@ -118,7 +119,7 @@ export function useCodexUsage(options?: { enabled?: boolean }) {
 /**
  * Hook to fetch available Codex CLI versions from GitHub releases
  */
-export function useAvailableCodexVersions() {
+export function useAvailableCodexVersions(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: codexCliQueryKeys.versions(),
     queryFn: async (): Promise<CodexReleaseInfo[]> => {
@@ -147,6 +148,7 @@ export function useAvailableCodexVersions() {
         throw error
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30,
   })

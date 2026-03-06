@@ -24,6 +24,8 @@ import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 
 interface TitleBarProps {
   className?: string
@@ -39,6 +41,7 @@ export function TitleBar({
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
+  const isMobile = useIsMobile()
 
   const sidebarShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.toggle_left_sidebar ||
@@ -46,20 +49,22 @@ export function TitleBar({
   )
   const native = isNativeApp()
 
-  const [appVersion, setAppVersion] = useState<string>('')
+  const [appVersion, setAppVersion] = useState<string>(FALLBACK_APP_VERSION)
   useEffect(() => {
-    if (native) {
-      import('@tauri-apps/api/app').then(({ getVersion }) =>
-        getVersion().then(setAppVersion)
-      )
-    }
+    if (!native) return
+
+    import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch(() => setAppVersion(FALLBACK_APP_VERSION))
   }, [native])
 
   return (
     <div
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
-        'relative flex h-8 w-full shrink-0 items-center justify-between bg-sidebar',
+        'relative flex h-8 w-full shrink-0 items-center justify-between',
+        isMobile ? 'bg-background' : 'bg-sidebar',
         native && 'z-[60]',
         className
       )}
@@ -147,9 +152,22 @@ export function TitleBar({
 
       {/* Right side - Version + Windows/Linux window controls */}
       <div
-        className="flex items-center"
+        className={cn('flex items-center', isMobile && 'pr-2')}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
+        {appVersion && <UpdateIndicator />}
+        {appVersion && (
+          <button
+            onClick={() =>
+              openExternal(
+                `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
+              )
+            }
+            className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
+          >
+            v{appVersion}
+          </button>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -165,19 +183,6 @@ export function TitleBar({
           </TooltipTrigger>
           <TooltipContent>GitHub</TooltipContent>
         </Tooltip>
-        {appVersion && <UpdateIndicator />}
-        {appVersion && (
-          <button
-            onClick={() =>
-              openExternal(
-                `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
-              )
-            }
-            className="pr-2 text-[0.625rem] text-foreground/40 hover:text-foreground/60 transition-colors cursor-pointer"
-          >
-            v{appVersion}
-          </button>
-        )}
         {native && !isMacOS && <WindowsWindowControls />}
       </div>
     </div>

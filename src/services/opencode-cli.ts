@@ -29,7 +29,7 @@ export const opencodeCliQueryKeys = {
 // Backward-compatible alias used by existing components.
 export const openCodeCliQueryKeys = opencodeCliQueryKeys
 
-export function useOpencodeCliStatus() {
+export function useOpencodeCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: opencodeCliQueryKeys.status(),
     queryFn: async (): Promise<OpencodeCliStatus> => {
@@ -41,6 +41,7 @@ export function useOpencodeCliStatus() {
         return { installed: false, version: null, path: null }
       }
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     refetchInterval: 1000 * 60 * 60,
@@ -72,7 +73,7 @@ export function useOpencodeCliAuth(options?: { enabled?: boolean }) {
 }
 export const useOpenCodeCliAuth = useOpencodeCliAuth
 
-export function useAvailableOpencodeVersions() {
+export function useAvailableOpencodeVersions(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: opencodeCliQueryKeys.versions(),
     queryFn: async (): Promise<OpencodeReleaseInfo[]> => {
@@ -81,6 +82,7 @@ export function useAvailableOpencodeVersions() {
         'get_available_opencode_versions'
       )
     },
+    enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30,
   })

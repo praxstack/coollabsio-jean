@@ -47,6 +47,7 @@ interface UseMessageSendingParams {
   sessionsData: any
   setInputDraft: (sessionId: string, draft: string) => void
   clearInputDraft: (sessionId: string) => void
+  clearChatInputState: () => void
 }
 
 /**
@@ -75,6 +76,7 @@ export function useMessageSending({
   sessionsData,
   setInputDraft,
   clearInputDraft,
+  clearChatInputState,
 }: UseMessageSendingParams) {
   // Helper to resolve custom CLI profile name for the active provider
   const resolveCustomProfile = useCallback(
@@ -396,13 +398,7 @@ export function useMessageSending({
       setSessionReviewing(activeSessionId, false)
       useChatStore.getState().clearPendingDigest(activeSessionId)
 
-      // Keep uncontrolled ChatInput state in sync for submit-button sends.
-      // Enter key path clears immediately in ChatInput; do the same here.
-      if (inputRef.current) {
-        inputRef.current.value = ''
-        inputRef.current.style.height = 'auto'
-        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
-      }
+      clearChatInputState()
 
       const { setQuestionsSkipped, setWaitingForInput } =
         useChatStore.getState()
@@ -451,6 +447,7 @@ export function useMessageSending({
       activeWorktreeId,
       activeWorktreePath,
       clearInputDraft,
+      clearChatInputState,
       scrollToBottom,
       sendMessageNow,
       sessionsData,

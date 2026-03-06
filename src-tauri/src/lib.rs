@@ -2049,10 +2049,16 @@ pub fn run() {
     let cli_args = parse_cli_args();
     let headless = cli_args.headless;
 
-    // Fix PATH environment for macOS GUI applications
-    // GUI apps don't inherit shell PATH - spawns login shell to get PATH from profiles
+    // Fix PATH environment for macOS GUI applications.
+    // GUI apps don't inherit shell PATH — spawns login shell to get PATH from profiles.
+    // Runs in a background thread because shell startup takes 100-500ms depending on
+    // dotfile complexity. PATH will be set before any CLI command actually needs it.
     #[cfg(target_os = "macos")]
-    fix_macos_path();
+    std::thread::spawn(|| {
+        let start = std::time::Instant::now();
+        fix_macos_path();
+        log::info!("Startup: fix_macos_path() completed in {:?} (background thread)", start.elapsed());
+    });
 
     // FIX: Avoid WebKit GBM buffer errors on Linux (especially NVIDIA)
     //
@@ -2157,7 +2163,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            log::trace!("🚀 Application starting up");
+            let setup_start = std::time::Instant::now();
+            log::info!("Startup: setup() begin");
             log::trace!(
                 "App handle initialized for package: {}",
                 app.package_info().name
@@ -2171,8 +2178,19 @@ pub fn run() {
                 }
             }
 
-            // Kill orphaned OpenCode server from a previous crash (if any)
-            opencode_server::cleanup_orphaned_server(app.handle());
+            // Kill orphaned OpenCode server from a previous crash (if any).
+            // Spawned async — cleanup involves blocking I/O (HTTP health check with
+            // 1.2s timeout, process kill, 300ms sleep) that can delay startup by ~1.5s.
+            let cleanup_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::task::spawn_blocking(move || {
+                    opencode_server::cleanup_orphaned_server(&cleanup_handle);
+                })
+                .await
+                .ok();
+            });
+
+            log::info!("Startup: orphaned server cleanup spawned at {:?}", setup_start.elapsed());
 
             // Allow image access from all known project/worktree directories.
             let app_handle = app.handle().clone();
@@ -2206,6 +2224,8 @@ pub fn run() {
                     log::warn!("Failed to load projects for asset scope initialization: {e}");
                 }
             }
+
+            log::info!("Startup: projects loaded + asset scopes registered at {:?}", setup_start.elapsed());
 
             // NOTE: Run recovery (crash recovery) is handled by check_resumable_sessions
             // which the frontend calls once it's ready. Previously this was done here in
@@ -2377,6 +2397,7 @@ pub fn run() {
                 }
             });
 
+            log::info!("Startup: setup() completed in {:?}", setup_start.elapsed());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

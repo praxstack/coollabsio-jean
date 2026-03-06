@@ -143,9 +143,9 @@ export function MainWindow() {
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
 
-  // Prefetch sessions for all projects on startup (regardless of sidebar visibility)
-  // This ensures session statuses (review, waiting) are restored immediately
-  useSessionPrefetch(projects)
+  // Prefetch sessions for all projects on startup (regardless of sidebar visibility).
+  // Wait for UI state initialization first so sidebar rendering isn't starved of IPC bandwidth.
+  useSessionPrefetch(isInitialized ? projects : undefined)
 
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)
