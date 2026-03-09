@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useAllSessions } from '@/services/chat'
 import type { Session } from '@/types/chat'
-import { isNativeApp } from '@/lib/environment'
 
 /** Check if a session counts as "unread" — has unseen activity */
 function isUnread(session: Session): boolean {
@@ -22,7 +21,7 @@ function isUnread(session: Session): boolean {
 
 /** Returns the number of unread sessions across all projects */
 export function useUnreadCount(): number {
-  const { data: allSessions } = useAllSessions(isNativeApp())
+  const { data: allSessions } = useAllSessions(true)
 
   return useMemo(() => {
     if (!allSessions) return 0

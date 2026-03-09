@@ -194,7 +194,12 @@ export function useSessionStatePersistence() {
         pendingPermissionDenials: state.pendingPermissionDenials,
         deniedMessageContext: state.deniedMessageContext,
         isReviewing: state.isReviewing,
-        waitingForInput: state.waitingForInput,
+        // Only persist waitingForInput when clearing it (user approval action).
+        // Setting it to true is handled by useStreamingEvents' chat:done handler
+        // which persists directly via invoke(). Persisting true here risks
+        // cross-client overwrites: native client's pauseSession sets true in its
+        // Zustand, then this debounced save writes it to disk after web cleared it.
+        waitingForInput: state.waitingForInput ? undefined : state.waitingForInput,
         planFilePath: state.planFilePath,
         pendingPlanMessageId: state.pendingPlanMessageId,
         enabledMcpServers: state.enabledMcpServers,
@@ -372,6 +377,14 @@ export function useSessionStatePersistence() {
       updates.executionModes = {
         ...currentState.executionModes,
         [activeSessionId]: session.selected_execution_mode,
+      }
+    }
+
+    // Load queued messages from session (persisted for cross-client sync)
+    if (session.queued_messages && session.queued_messages.length > 0) {
+      updates.messageQueues = {
+        ...currentState.messageQueues,
+        [activeSessionId]: session.queued_messages,
       }
     }
 

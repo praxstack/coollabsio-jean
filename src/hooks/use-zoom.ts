@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { isNativeApp } from '@/lib/environment'
 import { ZOOM_LEVEL_DEFAULT, zoomLevelTicks } from '@/types/preferences'
 import { isMacOS } from '@/lib/platform'
@@ -33,7 +33,7 @@ async function applyZoom(scaleFactor: number) {
 
 export function useZoom() {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   // Apply zoom when preferences change
   useEffect(() => {
@@ -68,12 +68,12 @@ export function useZoom() {
       }
 
       if (newZoom !== currentZoom && preferences) {
-        savePreferences.mutate({ ...preferences, zoom_level: newZoom })
+        patchPreferences.mutate({ zoom_level: newZoom })
       }
     }
 
     document.addEventListener('keydown', handleKeyDown, { capture: true })
     return () =>
       document.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 }

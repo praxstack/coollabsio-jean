@@ -20,6 +20,7 @@ import type {
   ThinkingLevel,
   ExecutionMode,
   LabelData,
+  QueuedMessage,
 } from '@/types/chat'
 import {
   isTauri,
@@ -276,10 +277,6 @@ export function useAllSessions(enabled = true) {
   return useQuery({
     queryKey: ['all-sessions'],
     queryFn: async (): Promise<AllSessionsResponse> => {
-      if (!isTauri()) {
-        return { entries: [] }
-      }
-
       try {
         logger.debug('Loading all sessions')
         const response = await invoke<AllSessionsResponse>('list_all_sessions')
@@ -1181,6 +1178,7 @@ export function useSendMessage() {
         throw new Error('Not in Tauri context')
       }
 
+      console.log(`[SendMutation] mutationFn CALLED sessionId=${sessionId} worktreeId=${worktreeId}`)
       logger.debug('Sending chat message', {
         sessionId,
         worktreeId,
@@ -1222,6 +1220,7 @@ export function useSendMessage() {
       executionMode,
       thinkingLevel,
     }) => {
+      console.log(`[SendMutation] onMutate sessionId=${sessionId}`)
       // Cancel in-flight queries to avoid overwriting optimistic update
       await queryClient.cancelQueries({
         queryKey: chatQueryKeys.session(sessionId),
@@ -1281,6 +1280,7 @@ export function useSendMessage() {
       return { previous, worktreeId }
     },
     onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
+      console.log(`[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
       // All cancelled responses are handled by the chat:cancelled event handler,
       // which already correctly restores the user message (undo path) or preserves
       // the partial assistant response (preserve path). Letting onSuccess proceed
@@ -1357,6 +1357,8 @@ export function useSendMessage() {
         error instanceof Error ? error.message : typeof error === 'string' ? error : errorStr
       const isCancellation =
         errorStr.includes('cancelled') || errorMessage.includes('cancelled')
+
+      console.log(`[SendMutation] onError sessionId=${sessionId} isCancellation=${isCancellation} error=${errorMessage}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
 
       if (isCancellation) {
         logger.debug('Message cancelled', { sessionId })
@@ -2002,4 +2004,71 @@ export async function markPlanApproved(
     logger.error('Failed to mark plan approved', { error, messageId })
     throw error
   }
+}
+
+// ============================================================================
+// Queue Persistence (cross-client sync)
+// ============================================================================
+
+/**
+ * Persist an enqueued message to the backend for cross-client sync.
+ * Fire-and-forget — Zustand is the optimistic source of truth.
+ */
+export function persistEnqueue(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string,
+  message: QueuedMessage
+): void {
+  invoke('enqueue_message', { worktreeId, worktreePath, sessionId, message }).catch(err => {
+    logger.error('Failed to persist enqueue', { err, sessionId })
+  })
+}
+
+/**
+ * Atomically dequeue a message from the backend.
+ * Returns the dequeued message or null if queue was empty (another client won the race).
+ */
+export async function persistDequeue(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string
+): Promise<QueuedMessage | null> {
+  return invoke<QueuedMessage | null>('dequeue_message', {
+    worktreeId,
+    worktreePath,
+    sessionId,
+  })
+}
+
+/**
+ * Persist removal of a specific queued message.
+ */
+export function persistRemoveQueued(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string,
+  messageId: string
+): void {
+  invoke('remove_queued_message', {
+    worktreeId,
+    worktreePath,
+    sessionId,
+    messageId,
+  }).catch(err => {
+    logger.error('Failed to persist remove queued', { err, sessionId })
+  })
+}
+
+/**
+ * Persist clearing the entire queue for a session.
+ */
+export function persistClearQueue(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string
+): void {
+  invoke('clear_message_queue', { worktreeId, worktreePath, sessionId }).catch(err => {
+    logger.error('Failed to persist clear queue', { err, sessionId })
+  })
 }

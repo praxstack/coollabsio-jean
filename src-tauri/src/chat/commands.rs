@@ -11,7 +11,7 @@ use super::registry::{cancel_process, cancel_process_if_running};
 use super::run_log;
 use super::storage::{
     delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
-    load_metadata, load_sessions, save_metadata, with_sessions_mut,
+    load_metadata, load_sessions, save_metadata, with_existing_metadata_mut, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
@@ -1269,6 +1269,7 @@ pub async fn send_chat_message(
     custom_profile_name: Option<String>,
     backend: Option<String>,
 ) -> Result<ChatMessage, String> {
+    log::info!("[SendChat] ENTRY session={session_id} worktree={worktree_id} model={model:?} execution_mode={execution_mode:?}");
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, allowed_tools: {allowed_tools:?}");
 
     // Validate inputs
@@ -1424,6 +1425,7 @@ pub async fn send_chat_message(
                 "Session not found: {session_id}. Available sessions: {:?}",
                 sessions.sessions.iter().map(|s| &s.id).collect::<Vec<_>>()
             );
+            log::error!("[SendChat] EXIT session={session_id} reason=session_not_found");
             log::error!("{}", error_msg);
 
             // Emit error event so frontend knows what happened
@@ -1610,6 +1612,7 @@ pub async fn send_chat_message(
         let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         if !super::registry::register_cancel_flag(session_id.clone(), flag.clone()) {
             // Already cancelled before we even started — bail out cleanly
+            log::info!("[SendChat] EXIT session={session_id} reason=pre_cancelled_opencode");
             if let Err(e) = run_log_writer.cancel(None, None) {
                 log::warn!("Failed to cancel run log for pre-cancelled OpenCode session: {e}");
             }
@@ -2334,6 +2337,7 @@ pub async fn send_chat_message(
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
             // Thread completed with an error — clean up all registrations.
+            log::info!("[SendChat] EXIT session={session_id} reason=thread_error error={e}");
             super::registry::clear_pending_cancel(&session_id);
             if let Some(ref flag) = opencode_cancel_flag {
                 // Only unregister if the flag wasn't already set by a cancel call
@@ -2354,6 +2358,7 @@ pub async fn send_chat_message(
             return Err(e);
         }
         Err(_) => {
+            log::info!("[SendChat] EXIT session={session_id} reason=thread_panic");
             super::registry::clear_pending_cancel(&session_id);
             if let Some(ref _flag) = opencode_cancel_flag {
                 super::registry::unregister_cancel_flag(&session_id);
@@ -2412,7 +2417,7 @@ pub async fn send_chat_message(
         if let Err(e) = run_log_writer.cancel(None, None) {
             log::warn!("Failed to cancel run log after error: {e}");
         }
-        log::trace!("Run cancelled after chat:error for session: {session_id}");
+        log::info!("[SendChat] EXIT session={session_id} reason=error_emitted");
         return Ok(ChatMessage {
             id: Uuid::new_v4().to_string(),
             session_id: session_id.clone(),
@@ -2474,7 +2479,7 @@ pub async fn send_chat_message(
             Ok(())
         })?;
 
-        log::trace!("Chat cancelled with no meaningful content for session: {session_id}");
+        log::info!("[SendChat] EXIT session={session_id} reason=cancelled_no_content");
         // Return a minimal cancelled message (not persisted, just for UI)
         return Ok(ChatMessage {
             id: Uuid::new_v4().to_string(),
@@ -2570,9 +2575,9 @@ pub async fn send_chat_message(
     // raced with the frontend (chat:done fires before this code runs).
 
     if unified_response.cancelled {
-        log::trace!("Chat message cancelled but partial response saved for session: {session_id}");
+        log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");
     } else {
-        log::trace!("Chat message sent and response received for session: {session_id}");
+        log::info!("[SendChat] EXIT session={session_id} reason=success");
     }
     Ok(assistant_msg)
 }
@@ -4976,6 +4981,7 @@ pub async fn broadcast_session_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    log::info!("broadcast_session_setting: session={session_id} key={key} value={value}");
     app.emit_all(
         "session:setting-changed",
         &serde_json::json!({
@@ -5215,6 +5221,111 @@ pub fn approve_codex_command(
     decision: String,
 ) -> Result<(), String> {
     super::codex::send_approval(&session_id, rpc_id, &decision)
+}
+
+// =============================================================================
+// Queue management commands (atomic operations for cross-client sync)
+// =============================================================================
+
+/// Push a message onto a session's queue. Returns the updated queue.
+/// Uses per-session metadata locking to avoid racing with send_chat_message.
+#[tauri::command]
+pub async fn enqueue_message(
+    app: AppHandle,
+    _worktree_id: String,
+    _worktree_path: String,
+    session_id: String,
+    message: serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    let queue = with_existing_metadata_mut(&app, &session_id, |metadata| {
+        metadata.queued_messages.push(message);
+        metadata.queued_messages.clone()
+    })?;
+
+    app.emit_all(
+        "queue:updated",
+        &serde_json::json!({ "sessionId": session_id, "queue": queue }),
+    )
+    .ok();
+
+    Ok(queue)
+}
+
+/// Remove and return the first message from a session's queue.
+/// Returns null if the queue is empty (prevents double-processing by racing clients).
+/// Holds the metadata lock across the entire read-modify-write to prevent TOCTOU races.
+#[tauri::command]
+pub async fn dequeue_message(
+    app: AppHandle,
+    _worktree_id: String,
+    _worktree_path: String,
+    session_id: String,
+) -> Result<Option<serde_json::Value>, String> {
+    let (dequeued, queue) = with_existing_metadata_mut(&app, &session_id, |metadata| {
+        let dequeued = if metadata.queued_messages.is_empty() {
+            None
+        } else {
+            Some(metadata.queued_messages.remove(0))
+        };
+        let remaining = metadata.queued_messages.clone();
+        (dequeued, remaining)
+    })?;
+
+    app.emit_all(
+        "queue:updated",
+        &serde_json::json!({ "sessionId": session_id, "queue": queue }),
+    )
+    .ok();
+
+    Ok(dequeued)
+}
+
+/// Remove a specific message from the queue by its `id` field.
+/// Holds the metadata lock across the entire read-modify-write to prevent TOCTOU races.
+#[tauri::command]
+pub async fn remove_queued_message(
+    app: AppHandle,
+    _worktree_id: String,
+    _worktree_path: String,
+    session_id: String,
+    message_id: String,
+) -> Result<(), String> {
+    let queue = with_existing_metadata_mut(&app, &session_id, |metadata| {
+        metadata
+            .queued_messages
+            .retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(&message_id));
+        metadata.queued_messages.clone()
+    })?;
+
+    app.emit_all(
+        "queue:updated",
+        &serde_json::json!({ "sessionId": session_id, "queue": queue }),
+    )
+    .ok();
+
+    Ok(())
+}
+
+/// Clear all queued messages for a session.
+/// Holds the metadata lock across the entire read-modify-write to prevent TOCTOU races.
+#[tauri::command]
+pub async fn clear_message_queue(
+    app: AppHandle,
+    _worktree_id: String,
+    _worktree_path: String,
+    session_id: String,
+) -> Result<(), String> {
+    with_existing_metadata_mut(&app, &session_id, |metadata| {
+        metadata.queued_messages.clear();
+    })?;
+
+    app.emit_all(
+        "queue:updated",
+        &serde_json::json!({ "sessionId": session_id, "queue": Vec::<serde_json::Value>::new() }),
+    )
+    .ok();
+
+    Ok(())
 }
 
 #[cfg(test)]

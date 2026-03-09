@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import {
   CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
@@ -16,7 +16,7 @@ import {
 export function useMagicPromptAutoDefaults() {
   const { data: preferences } = usePreferences()
   const { installedBackends, isLoading } = useInstalledBackends()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const didRun = useRef(false)
 
   useEffect(() => {
@@ -30,28 +30,23 @@ export function useMagicPromptAutoDefaults() {
 
     // If claude is installed (or nothing detected yet), keep Claude defaults
     if (hasClaude || installedBackends.length === 0) {
-      savePreferences.mutate({
-        ...preferences,
-        magic_models_auto_initialized: true,
-      })
+      patchPreferences.mutate({ magic_models_auto_initialized: true })
       return
     }
 
     // Only non-Claude backends installed — pick the first one
     if (hasCodex) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
         magic_models_auto_initialized: true,
       })
     } else if (hasOpencode) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_backends: OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
         magic_models_auto_initialized: true,
       })
     }
-  }, [preferences, installedBackends, isLoading, savePreferences])
+  }, [preferences, installedBackends, isLoading, patchPreferences])
 }

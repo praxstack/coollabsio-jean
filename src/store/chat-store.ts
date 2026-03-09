@@ -69,6 +69,10 @@ interface ChatUIState {
   // Set of session IDs currently sending (supports multiple concurrent sessions)
   sendingSessionIds: Record<string, boolean>
 
+  // Timestamp of last addSendingSession call per session — used to protect new sends
+  // from stale completion events arriving from a previous cancelled run
+  sendStartedAt: Record<string, number>
+
   // Session IDs initiated by the user (e.g. Clear Context & YOLO) — auto-mark as opened on completion
   userInitiatedSessionIds: Record<string, true>
 
@@ -554,6 +558,7 @@ export const useChatStore = create<ChatUIState>()(
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
+      sendStartedAt: {},
       userInitiatedSessionIds: {},
       waitingForInputSessionIds: {},
       sessionWorktreeMap: {},
@@ -883,12 +888,20 @@ export const useChatStore = create<ChatUIState>()(
       addSendingSession: sessionId =>
         set(
           state => {
-            if (state.sendingSessionIds[sessionId]) return state
+            const now = Date.now()
+            const wasAlreadySending = !!state.sendingSessionIds[sessionId]
+            console.log(`[Store] addSendingSession id=${sessionId}`, { currentSending: Object.keys(state.sendingSessionIds), wasAlreadySending })
             return {
               sendingSessionIds: {
                 ...state.sendingSessionIds,
                 [sessionId]: true,
               },
+              // Only set timestamp on initial send — chunk-driven re-adds must
+              // preserve the original timestamp so the stale-event protection
+              // in completeSession/pauseSession/failSession works correctly.
+              sendStartedAt: wasAlreadySending
+                ? state.sendStartedAt
+                : { ...state.sendStartedAt, [sessionId]: now },
             }
           },
           undefined,
@@ -898,6 +911,7 @@ export const useChatStore = create<ChatUIState>()(
       removeSendingSession: sessionId =>
         set(
           state => {
+            console.log(`[Store] removeSendingSession id=${sessionId}`, { wasSending: !!state.sendingSessionIds[sessionId], currentSending: Object.keys(state.sendingSessionIds) })
             const { [sessionId]: _, ...rest } = state.sendingSessionIds
             return { sendingSessionIds: rest }
           },
@@ -2014,8 +2028,8 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       // Pending permission denials
-      setPendingDenials: (sessionId, denials) =>
-        set(
+      setPendingDenials: (sessionId, denials) => {
+        return set(
           state => {
             const current = state.pendingPermissionDenials[sessionId]
             if (!current && denials.length === 0) return state
@@ -2028,7 +2042,8 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'setPendingDenials'
-        ),
+        )
+      },
 
       clearPendingDenials: sessionId =>
         set(
@@ -2074,6 +2089,15 @@ export const useChatStore = create<ChatUIState>()(
       completeSession: sessionId =>
         set(
           state => {
+            // Protection window: if this session just started sending (within 500ms),
+            // this is a stale completion from a previous cancelled run. Skip it.
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            if (sendStarted > 0 && elapsed < 500) {
+              console.warn(`[Store] completeSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago (stale event from previous run)`)
+              return state
+            }
+            console.log(`[Store] completeSession id=${sessionId}`, { wasSending: !!state.sendingSessionIds[sessionId], elapsed: sendStarted > 0 ? elapsed : 'n/a' })
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _sb, ...streamingContentBlocks } =
@@ -2088,6 +2112,8 @@ export const useChatStore = create<ChatUIState>()(
               state.streamingPlanApprovals
             const { [sessionId]: _em, ...executingModes } =
               state.executingModes
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               streamingContentBlocks,
@@ -2096,6 +2122,7 @@ export const useChatStore = create<ChatUIState>()(
               waitingForInputSessionIds,
               streamingPlanApprovals,
               executingModes,
+              sendStartedAt: sendStartedAtRest,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,
@@ -2109,16 +2136,26 @@ export const useChatStore = create<ChatUIState>()(
       pauseSession: sessionId =>
         set(
           state => {
+            // Same protection window as completeSession
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            if (sendStarted > 0 && elapsed < 500) {
+              console.warn(`[Store] pauseSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago`)
+              return state
+            }
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _ss, ...sendingSessionIds } =
               state.sendingSessionIds
             const { [sessionId]: _em, ...executingModes } =
               state.executingModes
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               sendingSessionIds,
               executingModes,
+              sendStartedAt: sendStartedAtRest,
               waitingForInputSessionIds: {
                 ...state.waitingForInputSessionIds,
                 [sessionId]: true,
@@ -2132,6 +2169,14 @@ export const useChatStore = create<ChatUIState>()(
       failSession: sessionId =>
         set(
           state => {
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            if (sendStarted > 0 && elapsed < 500) {
+              console.warn(
+                `[Store] failSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago (stale event from previous run)`
+              )
+              return state
+            }
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _sb, ...streamingContentBlocks } =
@@ -2142,12 +2187,15 @@ export const useChatStore = create<ChatUIState>()(
               state.sendingSessionIds
             const { [sessionId]: _wi, ...waitingForInputSessionIds } =
               state.waitingForInputSessionIds
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               streamingContentBlocks,
               activeToolCalls,
               sendingSessionIds,
               waitingForInputSessionIds,
+              sendStartedAt: sendStartedAtRest,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,

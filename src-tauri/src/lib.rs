@@ -1347,6 +1347,23 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
     Ok(())
 }
 
+/// Atomically patch preferences: loads current from disk, merges patch on top, saves.
+/// This avoids race conditions when multiple components save concurrently.
+#[tauri::command]
+async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
+    let current = load_preferences(app.clone()).await?;
+    let mut current_json = serde_json::to_value(&current)
+        .map_err(|e| format!("Serialize error: {e}"))?;
+    if let (Some(base), Some(patch_obj)) = (current_json.as_object_mut(), patch.as_object()) {
+        for (key, value) in patch_obj {
+            base.insert(key.clone(), value.clone());
+        }
+    }
+    let merged: AppPreferences = serde_json::from_value(current_json)
+        .map_err(|e| format!("Merge error: {e}"))?;
+    save_preferences(app, merged).await
+}
+
 #[tauri::command]
 async fn save_cli_profile(name: String, settings_json: String) -> Result<String, String> {
     // Validate JSON
@@ -2403,6 +2420,7 @@ pub fn run() {
             greet,
             load_preferences,
             save_preferences,
+            patch_preferences,
             save_cli_profile,
             delete_cli_profile,
             load_ui_state,
@@ -2594,6 +2612,11 @@ pub fn run() {
             chat::save_cancelled_message,
             chat::mark_plan_approved,
             chat::approve_codex_command,
+            // Chat commands - Queue management (cross-client sync)
+            chat::enqueue_message,
+            chat::dequeue_message,
+            chat::remove_queued_message,
+            chat::clear_message_queue,
             // Chat commands - Image handling
             chat::read_clipboard_image,
             chat::save_pasted_image,

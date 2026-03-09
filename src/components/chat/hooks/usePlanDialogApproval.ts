@@ -5,6 +5,7 @@ import { useChatStore } from '@/store/chat-store'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
+  persistEnqueue,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
 import { buildMcpConfigJson } from '@/services/mcp'
@@ -64,6 +65,7 @@ export function usePlanDialogApproval({
 
   const approve = useCallback(
     (updatedPlan: string | undefined, mode: 'build' | 'yolo') => {
+      console.warn('[usePlanDialogApproval] approve CALLED', { mode, activeSessionId })
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
       // Mark plan as approved if there's a pending plan message
@@ -144,6 +146,7 @@ export function usePlanDialogApproval({
         sessionId: activeSessionId,
         waitingForInput: false,
         waitingForInputType: null,
+        selectedExecutionMode: mode,
       }).catch(err => {
         console.error('[usePlanDialogApproval] Failed to clear waiting state:', err)
       })
@@ -158,6 +161,16 @@ export function usePlanDialogApproval({
         : defaultText
 
       setExecutionMode(activeSessionId, mode)
+      console.log('[usePlanDialogApproval] Broadcasting executionMode=' + mode + ' for session', activeSessionId)
+      invoke('broadcast_session_setting', {
+        sessionId: activeSessionId,
+        key: 'executionMode',
+        value: mode,
+      }).then(() => {
+        console.log('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' succeeded')
+      }).catch(err => {
+        console.error('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' failed:', err)
+      })
 
       const modelOverride = mode === 'yolo' ? yoloModelRef.current : buildModelRef.current
       const backendOverride = mode === 'yolo' ? yoloBackendRef.current : buildBackendRef.current
@@ -192,6 +205,7 @@ export function usePlanDialogApproval({
       }
 
       enqueueMessage(activeSessionId, queuedMessage)
+      persistEnqueue(activeWorktreeId, activeWorktreePath, activeSessionId, queuedMessage)
     },
     [
       activeSessionId,

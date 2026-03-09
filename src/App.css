@@ -363,6 +363,12 @@
     cursor: default;
   }
 
+  /* Make html transparent in native app so rounded MainWindow corners aren't
+     obscured by the rectangular html background */
+  html:has(body.native-app) {
+    background: transparent;
+  }
+
   svg {
     color: inherit;
   }
@@ -474,6 +480,10 @@ kbd {
 .font-mono .text-2xl {
   font-size: calc(var(--chat-font-size) * 1.5) !important;
 }
+
+/* Hidden scrollbar for horizontally scrollable tab bars */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Custom scrollbar styling to match Radix ScrollArea */
 .custom-scrollbar::-webkit-scrollbar {

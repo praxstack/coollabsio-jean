@@ -9,7 +9,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
   useAllBackendsMcpServers,
   invalidateAllMcpServers,
@@ -115,7 +115,7 @@ function HealthIndicator({
 
 export const McpServersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const { installedBackends } = useInstalledBackends()
 
   // Get worktree path for project-scope discovery
@@ -153,8 +153,7 @@ export const McpServersPane: React.FC = () => {
     const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
     const knownChanged = updatedKnown.length !== knownServers.length
     if (newServers.length > 0 || knownChanged) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         default_enabled_mcp_servers: [...enabledServers, ...newServers],
         known_mcp_servers: updatedKnown,
       })
@@ -166,10 +165,7 @@ export const McpServersPane: React.FC = () => {
     const updated = enabledServers.includes(serverName)
       ? enabledServers.filter(n => n !== serverName)
       : [...enabledServers, serverName]
-    savePreferences.mutate({
-      ...preferences,
-      default_enabled_mcp_servers: updated,
-    })
+    patchPreferences.mutate({ default_enabled_mcp_servers: updated })
   }
 
   const grouped = groupServersByBackend(mcpServers ?? [])

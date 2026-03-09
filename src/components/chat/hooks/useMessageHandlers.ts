@@ -6,6 +6,7 @@ import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
   readPlanFile,
+  persistEnqueue,
 } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import type {
@@ -1728,6 +1729,7 @@ export function useMessageHandlers({
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePermissionApproval = useCallback(
     (sessionId: string, approvedPatterns: string[]) => {
+      console.warn('[useMessageHandlers] handlePermissionApproval CALLED', sessionId, approvedPatterns)
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
       if (!worktreeId || !worktreePath) return
@@ -1758,6 +1760,22 @@ export function useMessageHandlers({
         clearDeniedMessageContext(sessionId)
         setWaitingForInput(sessionId, false)
         setExecutionMode(sessionId, 'build')
+        console.log('[useMessageHandlers] Codex path: Broadcasting executionMode=build for session', sessionId)
+        invoke('broadcast_session_setting', {
+          sessionId,
+          key: 'executionMode',
+          value: 'build',
+        }).then(() => {
+          console.log('[useMessageHandlers] Codex broadcast executionMode=build succeeded')
+        }).catch(err => {
+          console.error('[useMessageHandlers] Codex broadcast executionMode=build failed:', err)
+        })
+        invoke('update_session_state', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          selectedExecutionMode: 'build',
+        }).catch(() => undefined)
 
         requestAnimationFrame(() => {
           scrollToBottom(true)
@@ -1802,6 +1820,22 @@ export function useMessageHandlers({
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
       setExecutionMode(sessionId, 'build')
+      console.log('[useMessageHandlers] Claude path: Broadcasting executionMode=build for session', sessionId)
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'executionMode',
+        value: 'build',
+      }).then(() => {
+        console.log('[useMessageHandlers] Claude broadcast executionMode=build succeeded')
+      }).catch(err => {
+        console.error('[useMessageHandlers] Claude broadcast executionMode=build failed:', err)
+      })
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        selectedExecutionMode: 'build',
+      }).catch(() => undefined)
 
       requestAnimationFrame(() => {
         scrollToBottom(true)
@@ -2139,23 +2173,25 @@ Please apply this fix to the file.`
 
       // If session is already busy, queue the fix message
       if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
+        const queuedMsg = {
           id: generateId(),
           message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
+          pendingImages: [] as never[],
+          pendingFiles: [] as never[],
+          pendingSkills: [] as never[],
+          pendingTextFiles: [] as never[],
           model: selectedModelRef.current,
           provider: getCustomProfileName() ?? null,
-          executionMode: 'build',
+          executionMode: 'build' as const,
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
           queuedAt: Date.now(),
-        })
+        }
+        enqueueMessage(sessionId, queuedMsg)
+        persistEnqueue(worktreeId, worktreePath, sessionId, queuedMsg)
         toast.info('Fix queued — will start when current task completes')
         return
       }
@@ -2277,23 +2313,25 @@ Please apply all these fixes to the respective files.`
 
       // If session is already busy, queue the fix message
       if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
+        const queuedMsg = {
           id: generateId(),
           message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
+          pendingImages: [] as never[],
+          pendingFiles: [] as never[],
+          pendingSkills: [] as never[],
+          pendingTextFiles: [] as never[],
           model: selectedModelRef.current,
           provider: getCustomProfileName() ?? null,
-          executionMode: 'build',
+          executionMode: 'build' as const,
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
           queuedAt: Date.now(),
-        })
+        }
+        enqueueMessage(sessionId, queuedMsg)
+        persistEnqueue(worktreeId, worktreePath, sessionId, queuedMsg)
         toast.info('Fix queued — will start when current task completes')
         return
       }

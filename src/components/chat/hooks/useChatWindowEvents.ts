@@ -55,7 +55,7 @@ interface UseChatWindowEventsParams {
   // Debug/preferences
   preferences: { debug_mode_enabled?: boolean } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  savePreferences: { mutate: (prefs: any) => void }
+  patchPreferences: { mutate: (prefs: any) => void }
   // Context operations
   handleSaveContext: () => void
   handleLoadContext: () => void
@@ -114,7 +114,7 @@ export function useChatWindowEvents({
   currentQueuedMessages,
   createSession,
   preferences,
-  savePreferences,
+  patchPreferences,
   handleSaveContext,
   handleLoadContext,
   runScript,
@@ -282,11 +282,28 @@ export function useChatWindowEvents({
   useEffect(() => {
     if (!activeSessionId) return
     const handler = () => {
-      useChatStore.getState().cycleExecutionMode(activeSessionId)
+      const store = useChatStore.getState()
+      store.cycleExecutionMode(activeSessionId)
+      const mode = useChatStore.getState().executionModes[activeSessionId] ?? 'plan'
+      // Broadcast to other clients (native ↔ web access)
+      invoke('broadcast_session_setting', {
+        sessionId: activeSessionId,
+        key: 'executionMode',
+        value: mode,
+      }).catch(() => undefined)
+      // Persist immediately
+      if (activeWorktreeId && activeWorktreePath) {
+        invoke('update_session_state', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
+          selectedExecutionMode: mode,
+        }).catch(() => undefined)
+      }
     }
     window.addEventListener('cycle-execution-mode', handler)
     return () => window.removeEventListener('cycle-execution-mode', handler)
-  }, [activeSessionId])
+  }, [activeSessionId, activeWorktreeId, activeWorktreePath])
 
   // CMD+G: Open git diff
   useEffect(() => {
@@ -395,14 +412,13 @@ export function useChatWindowEvents({
   useEffect(() => {
     const handler = () => {
       if (!preferences) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         debug_mode_enabled: !preferences.debug_mode_enabled,
       })
     }
     window.addEventListener('command:toggle-debug-mode', handler)
     return () => window.removeEventListener('command:toggle-debug-mode', handler)
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   // Set chat input from external (conflict resolution flow)
   useEffect(() => {

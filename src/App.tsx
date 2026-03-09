@@ -5,6 +5,7 @@ import {
   useWsConnectionStatus,
   useWsAuthError,
   preloadInitialData,
+  refetchInitialData,
   setAppDataDir,
   hasPreloadedData,
   type InitialData,
@@ -175,11 +176,10 @@ function App() {
     []
   )
 
-  // Preload initial data via HTTP for web view (faster than waiting for WebSocket)
-  useEffect(() => {
-    if (isNativeApp()) return
-
-    const seedCache = (data: InitialData) => {
+  // Seed TanStack Query cache and Zustand state from bulk initial data.
+  // Used on both initial preload and WebSocket reconnect.
+  const seedCache = useCallback(
+    (data: InitialData) => {
       // Seed projects into TanStack Query cache
       if (data.projects) {
         queryClient.setQueryData(projectsQueryKeys.list(), data.projects)
@@ -281,6 +281,21 @@ function App() {
           queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
         }
       }
+      // Mark running sessions as sending (restores streaming state after refresh)
+      // Batch into a single set() to avoid triggering subscribers per-session
+      if (data.runningSessions?.length) {
+        useChatStore.setState(state => {
+          const updated = { ...state.sendingSessionIds }
+          let changed = false
+          for (const sessionId of data.runningSessions!) {
+            if (!updated[sessionId]) {
+              updated[sessionId] = true
+              changed = true
+            }
+          }
+          return changed ? { sendingSessionIds: updated } : state
+        })
+      }
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache
       if (data.preferences) {
@@ -294,7 +309,13 @@ function App() {
       if (data.appDataDir) {
         setAppDataDir(data.appDataDir)
       }
-    }
+    },
+    [queryClient]
+  )
+
+  // Preload initial data via HTTP for web view (faster than waiting for WebSocket)
+  useEffect(() => {
+    if (isNativeApp()) return
 
     preloadInitialData()
       .then(data => {
@@ -311,7 +332,7 @@ function App() {
       .finally(() => {
         setIsPreloading(false)
       })
-  }, [queryClient])
+  }, [queryClient, seedCache])
 
   // Apply font settings from preferences
   useFontSettings()
@@ -343,8 +364,9 @@ function App() {
   // One-time: detect installed backends and set magic prompt defaults accordingly
   useMagicPromptAutoDefaults()
 
-  // When WebSocket connects (browser mode), invalidate queries that weren't preloaded
-  // so they refetch with the now-available backend. Skip preloaded data.
+  // When WebSocket connects (browser mode), reload state.
+  // On first connect: invalidate non-preloaded queries.
+  // On reconnect: re-fetch bulk data via HTTP to restore everything fast.
   const wsConnected = useWsConnectionStatus()
   const wsAuthError = useWsAuthError()
   const hadWsConnectionRef = useRef(false)
@@ -354,54 +376,51 @@ function App() {
     const reconnected = hadWsConnectionRef.current
     hadWsConnectionRef.current = true
 
-    logger.info('WebSocket connected, invalidating dynamic queries', {
-      reconnected,
-    })
-
-    // Invalidate everything except what we preloaded
-    queryClient.invalidateQueries({
-      predicate: query => {
-        const key = query.queryKey[0]
-        // Skip invalidating preloaded data (projects, worktrees, sessions, chat, preferences, ui-state)
-        return (
-          key !== 'projects' &&
-          key !== 'preferences' &&
-          key !== 'ui-state' &&
-          key !== 'chat'
-        )
-      },
-    })
-
-    // On reconnect, always reload the currently opened chat session state.
     if (reconnected) {
-      const chatStore = useChatStore.getState()
-      const uiStore = useUIStore.getState()
-      const targetWorktreeId =
-        uiStore.sessionChatModalOpen && uiStore.sessionChatModalWorktreeId
-          ? uiStore.sessionChatModalWorktreeId
-          : chatStore.activeWorktreeId
-
-      if (!targetWorktreeId) return
-
-      const activeSessionId = chatStore.activeSessionIds[targetWorktreeId]
-      if (!activeSessionId) return
-
-      logger.info('WebSocket reconnected, reloading active session', {
-        worktreeId: targetWorktreeId,
-        sessionId: activeSessionId,
-      })
-
+      // Re-fetch all data via HTTP in one request (much faster than
+      // individual WebSocket query refetches, and ensures Zustand state
+      // like sessionWorktreeMap/reviewingSessions is also restored).
+      logger.info('WebSocket reconnected, re-fetching initial data via HTTP')
+      refetchInitialData()
+        .then(data => {
+          if (data) {
+            seedCache(data)
+            logger.info('Reconnect: re-seeded cache from HTTP')
+          }
+          // Also invalidate non-preloaded queries (git status, CLI checks, etc.)
+          queryClient.invalidateQueries({
+            predicate: query => {
+              const key = query.queryKey[0]
+              return (
+                key !== 'projects' &&
+                key !== 'preferences' &&
+                key !== 'ui-state' &&
+                key !== 'chat'
+              )
+            },
+          })
+        })
+        .catch(err => {
+          logger.warn('Reconnect: HTTP re-fetch failed, falling back to query invalidation', { error: err })
+          // Fallback: invalidate everything so TanStack Query refetches via WebSocket
+          queryClient.invalidateQueries()
+        })
+    } else {
+      // First connect: invalidate non-preloaded queries only
+      logger.info('WebSocket connected, invalidating dynamic queries')
       queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(targetWorktreeId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.session(activeSessionId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: ['all-sessions'],
+        predicate: query => {
+          const key = query.queryKey[0]
+          return (
+            key !== 'projects' &&
+            key !== 'preferences' &&
+            key !== 'ui-state' &&
+            key !== 'chat'
+          )
+        },
       })
     }
-  }, [wsConnected, queryClient])
+  }, [wsConnected, queryClient, seedCache])
 
   // Add native-app class to body for desktop-only CSS (cursor, user-select, etc.)
   useEffect(() => {
@@ -465,8 +484,7 @@ function App() {
     const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
     const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
     const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
-    const opencodeReady =
-      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const opencodeReady = !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
     const hasAiBackendReady = claudeReady || codexReady || opencodeReady
 
     if (useUIStore.getState().onboardingDismissed) return
@@ -516,7 +534,9 @@ function App() {
     let wasOpen = useUIStore.getState().onboardingOpen
     const unsub = useUIStore.subscribe(state => {
       const isOpen = state.onboardingOpen
-      if (wasOpen && !isOpen) {
+      const prevWasOpen = wasOpen
+      wasOpen = isOpen // Update FIRST to prevent re-entrant loops from synchronous setState
+      if (prevWasOpen && !isOpen) {
         const store = useUIStore.getState()
         // Don't show feature tour if user dismissed onboarding without completing setup
         if (store.onboardingDismissed) {
@@ -532,7 +552,6 @@ function App() {
           }
         }
       }
-      wasOpen = isOpen
     })
     return unsub
   }, [queryClient])

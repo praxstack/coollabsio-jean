@@ -463,6 +463,13 @@ pub struct Session {
         deserialize_with = "deserialize_label_compat"
     )]
     pub label: Option<LabelData>,
+
+    // ========================================================================
+    // Queued messages (synced between native + web clients)
+    // ========================================================================
+    /// Messages queued for sending (persisted so they survive page refresh / sync across clients)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queued_messages: Vec<serde_json::Value>,
 }
 
 impl Session {
@@ -511,6 +518,7 @@ impl Session {
             last_run_status: None,
             last_run_execution_mode: None,
             label: None,
+            queued_messages: vec![],
         }
     }
 
@@ -690,6 +698,7 @@ impl SessionMetadata {
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
             label: self.label.clone(),
+            queued_messages: self.queued_messages.clone(),
         }
     }
 
@@ -721,6 +730,7 @@ impl SessionMetadata {
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
         self.label = session.label.clone();
+        self.queued_messages = session.queued_messages.clone();
     }
 }
 
@@ -1031,6 +1041,10 @@ pub struct SessionMetadata {
     )]
     pub label: Option<LabelData>,
 
+    /// Messages queued for sending (synced between native + web clients)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queued_messages: Vec<serde_json::Value>,
+
     /// Unix timestamp when session was last opened/viewed by the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<u64>,
@@ -1127,6 +1141,7 @@ impl SessionMetadata {
             enabled_mcp_servers: None,
             digest: None,
             label: None,
+            queued_messages: vec![],
             last_opened_at: None,
             runs: vec![],
             version: 1,

@@ -86,6 +86,48 @@ export function usePreferences() {
   })
 }
 
+/**
+ * Atomically patch preferences on the backend (read-merge-write).
+ * Use this for single/few-field updates to avoid race conditions.
+ */
+export function usePatchPreferences() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (patch: Partial<AppPreferences>) => {
+      if (!isTauri()) {
+        logger.debug(
+          'Not in Tauri context, preferences not persisted to disk',
+          { patch }
+        )
+        return
+      }
+
+      try {
+        logger.debug('Patching preferences on backend', { patch })
+        await invoke('patch_preferences', { patch })
+        logger.info('Preferences patched successfully')
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Unknown error occurred'
+        logger.error('Failed to patch preferences', { error, patch })
+        toast.error('Failed to save preferences', { description: message })
+        throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: preferencesQueryKeys.preferences(),
+      })
+      logger.info('Preferences cache invalidated after patch')
+    },
+  })
+}
+
 export function useSavePreferences() {
   const queryClient = useQueryClient()
 

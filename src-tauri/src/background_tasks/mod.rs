@@ -634,9 +634,8 @@ impl BackgroundTaskManager {
 }
 
 async fn refresh_usage_caches(app: &AppHandle) {
-    if let Err(e) = refresh_claude_usage_cache(app).await {
-        log::trace!("Background usage refresh (Claude) skipped/failed: {e}");
-    }
+    // Claude usage polling disabled — auth bug causes repeated logouts
+    // (see UsagePane.tsx). Keep refresh_claude_usage_cache() for re-enabling later.
 
     if let Err(e) = refresh_codex_usage_cache(app).await {
         log::trace!("Background usage refresh (Codex) skipped/failed: {e}");

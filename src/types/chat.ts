@@ -195,6 +195,8 @@ export interface Session {
   last_run_execution_mode?: ExecutionMode
   /** User-assigned label with color (e.g. "Needs testing") */
   label?: LabelData
+  /** Messages queued for sending (synced between native + web clients) */
+  queued_messages?: QueuedMessage[]
 }
 
 /**

@@ -63,6 +63,8 @@ export function NewWorktreeModal() {
     ghsaId?: string
   } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Track preview-was-open across the same event cycle (ref survives after state clears)
+  const previewOpenRef = useRef(false)
 
   // Hooks
   const data = useNewWorktreeData(searchQuery, includeClosed)
@@ -74,19 +76,23 @@ export function NewWorktreeModal() {
   })
 
   const handlePreviewIssue = (issue: { number: number }) => {
+    previewOpenRef.current = true
     setPreviewItem({ type: 'issue', number: issue.number })
   }
 
   const handlePreviewPR = (pr: { number: number }) => {
+    previewOpenRef.current = true
     setPreviewItem({ type: 'pr', number: pr.number })
   }
 
   const handlePreviewSecurityAlert = (alert: { number: number }) => {
+    previewOpenRef.current = true
     setPreviewItem({ type: 'security', number: alert.number })
   }
 
   const handlePreviewAdvisory = (advisory: { ghsaId: string }) => {
     // Advisories use ghsaId as identifier; we pass number=0 since it's not number-based
+    previewOpenRef.current = true
     setPreviewItem({ type: 'advisory', number: 0, ghsaId: advisory.ghsaId })
   }
 
@@ -162,13 +168,34 @@ export function NewWorktreeModal() {
   }, [activeTab])
 
   return (
+    <>
     <Dialog
       open={newWorktreeModalOpen}
-      onOpenChange={handlers.handleOpenChange}
+      onOpenChange={open => {
+        console.log('[DIALOG-DEBUG] Parent onOpenChange', { open, previewItem: !!previewItem, previewOpenRef: previewOpenRef.current })
+        if (!open && (previewItem || previewOpenRef.current)) return
+        handlers.handleOpenChange(open)
+      }}
     >
       <DialogContent
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
+        onEscapeKeyDown={e => {
+          console.log('[DIALOG-DEBUG] Parent onEscapeKeyDown', { previewItem: !!previewItem, previewOpenRef: previewOpenRef.current })
+          if (previewItem || previewOpenRef.current) e.preventDefault()
+        }}
+        onPointerDownOutside={e => {
+          console.log('[DIALOG-DEBUG] Parent onPointerDownOutside', { previewItem: !!previewItem, previewOpenRef: previewOpenRef.current, target: (e.target as HTMLElement)?.tagName })
+          if (previewItem || previewOpenRef.current) e.preventDefault()
+        }}
+        onInteractOutside={e => {
+          console.log('[DIALOG-DEBUG] Parent onInteractOutside', { previewItem: !!previewItem, previewOpenRef: previewOpenRef.current, type: e.type })
+          if (previewItem || previewOpenRef.current) e.preventDefault()
+        }}
+        onFocusOutside={e => {
+          console.log('[DIALOG-DEBUG] Parent onFocusOutside', { previewItem: !!previewItem, previewOpenRef: previewOpenRef.current })
+          if (previewItem || previewOpenRef.current) e.preventDefault()
+        }}
       >
         <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle>
@@ -334,19 +361,29 @@ export function NewWorktreeModal() {
           </div>
         )}
       </DialogContent>
-      {previewItem && data.selectedProject && (
-        <IssuePreviewModal
-          open={!!previewItem}
-          onOpenChange={open => {
-            if (!open) setPreviewItem(null)
-          }}
-          projectPath={data.selectedProject.path}
-          type={previewItem.type}
-          number={previewItem.number}
-          ghsaId={previewItem.ghsaId}
-        />
-      )}
     </Dialog>
+    {previewItem && data.selectedProject && (
+      <IssuePreviewModal
+        open={!!previewItem}
+        onOpenChange={open => {
+          if (!open) {
+            console.log('[DIALOG-DEBUG] Preview closing — setting previewOpenRef=true, clearing after rAF')
+            previewOpenRef.current = true
+            setPreviewItem(null)
+            // Clear ref after the current event cycle so parent guards still block
+            requestAnimationFrame(() => {
+              previewOpenRef.current = false
+              console.log('[DIALOG-DEBUG] previewOpenRef cleared')
+            })
+          }
+        }}
+        projectPath={data.selectedProject.path}
+        type={previewItem.type}
+        number={previewItem.number}
+        ghsaId={previewItem.ghsaId}
+      />
+    )}
+    </>
   )
 }
 

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects, useSaveJeanConfig } from '@/services/projects'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 
 export function JeanConfigWizard() {
   const open = useProjectsStore(s => s.jeanConfigWizardOpen)
@@ -30,7 +30,7 @@ function JeanConfigWizardContent() {
   const project = projects.find(p => p.id === jeanConfigWizardProjectId)
 
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const saveConfig = useSaveJeanConfig()
 
   const [setupScript, setSetupScript] = useState('')
@@ -39,10 +39,7 @@ function JeanConfigWizardContent() {
 
   const markSeen = () => {
     if (preferences && !preferences.has_seen_jean_config_wizard) {
-      savePreferences.mutate({
-        ...preferences,
-        has_seen_jean_config_wizard: true,
-      })
+      patchPreferences.mutate({ has_seen_jean_config_wizard: true })
     }
   }
 

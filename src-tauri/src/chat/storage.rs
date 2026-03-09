@@ -295,6 +295,29 @@ pub fn save_metadata(app: &AppHandle, metadata: &SessionMetadata) -> Result<(), 
     save_metadata_internal(app, metadata)
 }
 
+/// Atomically load, modify, and save an existing session's metadata.
+/// Returns an error if the session doesn't exist.
+/// Holds the lock across the entire read-modify-write cycle to prevent TOCTOU races.
+pub fn with_existing_metadata_mut<F, T>(
+    app: &AppHandle,
+    session_id: &str,
+    f: F,
+) -> Result<T, String>
+where
+    F: FnOnce(&mut SessionMetadata) -> T,
+{
+    let lock = get_metadata_lock(session_id);
+    let _guard = lock.lock().unwrap();
+
+    let mut metadata = load_metadata_internal(app, session_id)?
+        .ok_or_else(|| format!("Session {session_id} not found"))?;
+
+    let result = f(&mut metadata);
+    save_metadata_internal(app, &metadata)?;
+
+    Ok(result)
+}
+
 /// Atomically load, modify, and save session metadata.
 /// Creates new metadata if it doesn't exist.
 pub fn with_metadata_mut<F, T>(
@@ -472,6 +495,7 @@ pub fn load_sessions(
                 last_run_status: None,
                 last_run_execution_mode: None,
                 label: None,
+                queued_messages: vec![],
             }
         };
         sessions.push(session);
@@ -552,6 +576,7 @@ where
                 last_run_status: None,
                 last_run_execution_mode: None,
                 label: None,
+                queued_messages: vec![],
             }
         };
         hydrated_sessions.push(session);

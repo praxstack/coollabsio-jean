@@ -31,7 +31,7 @@ import {
   AuthLoginState,
 } from './CliSetupComponents'
 import { toast } from 'sonner'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 
 type AIBackend = 'claude' | 'codex' | 'opencode'
 type CliType = AIBackend | 'gh'
@@ -114,14 +114,13 @@ export function OnboardingDialog() {
 function OnboardingDialogContent() {
   const {
     onboardingOpen,
-    setOnboardingOpen,
     onboardingStartStep,
     setOnboardingStartStep,
     onboardingManuallyTriggered,
   } = useUIStore()
 
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   const claudeSetup = useClaudeCliSetup()
   const codexSetup = useCodexCliSetup()
@@ -579,10 +578,14 @@ function OnboardingDialogContent() {
     // isn't left pointing at an uninstalled backend (e.g. 'claude').
     const [firstBackend] = selectedBackends
     if (firstBackend && preferences) {
-      savePreferences.mutate({ ...preferences, default_backend: firstBackend })
+      patchPreferences.mutate({ default_backend: firstBackend })
     }
-    setOnboardingOpen(false)
-    setOnboardingStartStep(null)
+    // Atomically close onboarding and mark as dismissed so it doesn't reappear on reload
+    useUIStore.setState({
+      onboardingOpen: false,
+      onboardingStartStep: null,
+      onboardingDismissed: true,
+    })
   }, [
     claudeSetup,
     codexSetup,
@@ -590,9 +593,7 @@ function OnboardingDialogContent() {
     ghSetup,
     selectedBackends,
     preferences,
-    savePreferences,
-    setOnboardingOpen,
-    setOnboardingStartStep,
+    patchPreferences,
   ])
 
   const handleAbort = useCallback(() => {
@@ -695,16 +696,11 @@ function OnboardingDialogContent() {
   const isGhReinstall = ghSetup.status?.installed && step === 'gh-setup'
 
   const claudeLoginCommand = claudeSetup.status?.path ?? ''
-  const claudeLoginArgs = claudeSetup.status?.supports_auth_command
-    ? ['auth', 'login']
-    : ['login']
-
+  const claudeLoginArgs = claudeSetup.status?.supports_auth_command ? ['auth', 'login'] : ['login']
   const codexLoginCommand = codexSetup.status?.path ?? ''
   const codexLoginArgs = ['login']
-
   const opencodeLoginCommand = opencodeSetup.status?.path ?? ''
   const opencodeLoginArgs = ['auth', 'login']
-
   const ghLoginCommand = ghSetup.status?.path ?? ''
   const ghLoginArgs = ['auth', 'login']
 
@@ -1045,21 +1041,11 @@ function BackendSelectionState({
               const label = backendLabel[backend]
 
               return (
-                <label
-                  key={backend}
-                  htmlFor={id}
-                  className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/40"
-                >
-                  <Checkbox
-                    id={id}
-                    checked={checked}
-                    onCheckedChange={value => onToggle(backend, value === true)}
-                  />
+                <label key={backend} htmlFor={id} className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/40">
+                  <Checkbox id={id} checked={checked} onCheckedChange={value => onToggle(backend, value === true)} />
                   <div>
                     <p className="text-sm font-medium">{label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Install and authenticate {label}.
-                    </p>
+                    <p className="text-xs text-muted-foreground">Install and authenticate {label}.</p>
                   </div>
                 </label>
               )
@@ -1072,8 +1058,7 @@ function BackendSelectionState({
               : 'You must install at least one AI backend. You can install more later in Settings.'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Jean installs its own copies of each CLI and won&apos;t use or modify your
-            global installations.
+            Jean installs its own copies of each CLI and won&apos;t use or modify your global installations.
           </p>
         </>
       )}

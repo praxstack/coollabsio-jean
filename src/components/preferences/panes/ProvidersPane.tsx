@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
   type CustomCliProfile,
   PREDEFINED_CLI_PROFILES,
@@ -38,28 +38,20 @@ const SettingsSection: React.FC<{
 
 export const ProvidersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   const profiles = preferences?.custom_cli_profiles ?? []
 
   const handleSaveProfiles = (updated: CustomCliProfile[]) => {
-    if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
-        custom_cli_profiles: updated,
-      })
-    }
+    patchPreferences.mutate({ custom_cli_profiles: updated })
   }
 
   const defaultProvider = preferences?.default_provider ?? null
 
   const handleDefaultProviderChange = (value: string) => {
-    if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
-        default_provider: value === 'default' ? null : value,
-      })
-    }
+    patchPreferences.mutate({
+      default_provider: value === 'default' ? null : value,
+    })
   }
 
   return (

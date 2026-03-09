@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
-import { useSendMessage } from '@/services/chat'
+import { useSendMessage, persistDequeue } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import { isTauri } from '@/services/projects'
@@ -72,6 +72,9 @@ function buildMessageWithRefs(queuedMsg: QueuedMessage): string {
  *
  * Processes queued messages for ALL sessions, not just the active one.
  * This fixes the bug where queued prompts don't execute when the worktree is unfocused.
+ *
+ * Uses atomic backend dequeue to prevent double-processing when both native
+ * and web clients are running simultaneously.
  */
 export function useQueueProcessor(): void {
   const sendMessage = useSendMessage()
@@ -101,24 +104,15 @@ export function useQueueProcessor(): void {
   useEffect(() => {
     if (!hasProcessableQueue || !isTauri()) return
 
-    // Read fresh state inside effect to avoid subscribing to full records
+    // Read fresh state inside effect to avoid subscribing to full records.
+    // Store actions are accessed via getState() inside the async callback
+    // to ensure fresh references after the await.
     const {
       messageQueues,
       sendingSessionIds,
       waitingForInputSessionIds,
       sessionWorktreeMap,
       worktreePaths,
-      dequeueMessage,
-      addSendingSession,
-      setLastSentMessage,
-      setError,
-      setExecutingMode,
-      setSelectedModel,
-      getApprovedTools,
-      clearStreamingContent,
-      clearToolCalls,
-      clearStreamingContentBlocks,
-      setSessionReviewing,
     } = useChatStore.getState()
 
     // Process each session's queue
@@ -146,73 +140,95 @@ export function useQueueProcessor(): void {
         continue
       }
 
-      // Mark as processing to prevent duplicate processing
+      // Mark as processing to prevent duplicate processing within this client
       processingRef.current.add(sessionId)
 
-      // Dequeue the message
-      const queuedMsg = dequeueMessage(sessionId)
-      if (!queuedMsg) {
-        processingRef.current.delete(sessionId)
-        continue
-      }
+      // Atomically dequeue from backend — only ONE client wins each message.
+      // The backend uses per-session locking, so concurrent dequeue calls from
+      // native and web clients are serialized. The loser gets null.
+      const capturedSessionId = sessionId
+      const capturedWorktreeId = worktreeId
+      const capturedWorktreePath = worktreePath
+      persistDequeue(worktreeId, worktreePath, sessionId)
+        .then(msg => {
+          if (!msg) {
+            // Another client already dequeued this message, or the backend
+            // queue was empty. The queue:updated event will sync local state.
+            processingRef.current.delete(capturedSessionId)
+            return
+          }
 
-      logger.info('Queue processor: Processing queued message', {
-        sessionId,
-        worktreeId,
-        messageId: queuedMsg.id,
-      })
+          // Remove the specific dequeued message from local Zustand by ID.
+          // This is idempotent: if the queue:updated event already synced,
+          // the message won't be found and this is a no-op.
+          useChatStore.getState().removeQueuedMessage(capturedSessionId, msg.id)
 
-      // Clear stale streaming state before starting new message
-      clearStreamingContent(sessionId)
-      clearToolCalls(sessionId)
-      clearStreamingContentBlocks(sessionId)
+          logger.info('Queue processor: Processing queued message', {
+            sessionId: capturedSessionId,
+            worktreeId: capturedWorktreeId,
+            messageId: msg.id,
+          })
 
-      // Set up session state
-      setLastSentMessage(sessionId, queuedMsg.message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSessionReviewing(sessionId, false) // Clear stale review state so canvas shows running status
-      setExecutingMode(sessionId, queuedMsg.executionMode)
-      setSelectedModel(sessionId, queuedMsg.model)
+          const store = useChatStore.getState()
 
-      // Get session-approved tools
-      const sessionApprovedTools = getApprovedTools(sessionId)
-      const allowedTools =
-        sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
-          : undefined
+          // Clear stale streaming state before starting new message
+          store.clearStreamingContent(capturedSessionId)
+          store.clearToolCalls(capturedSessionId)
+          store.clearStreamingContentBlocks(capturedSessionId)
 
-      // Build full message with attachment refs
-      const fullMessage = buildMessageWithRefs(queuedMsg)
+          // Set up session state
+          store.setLastSentMessage(capturedSessionId, msg.message)
+          store.setError(capturedSessionId, null)
+          store.addSendingSession(capturedSessionId)
+          store.setSessionReviewing(capturedSessionId, false)
+          store.setExecutingMode(capturedSessionId, msg.executionMode)
+          store.setSelectedModel(capturedSessionId, msg.model)
 
-      // Send the message
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message: fullMessage,
-          model: queuedMsg.model,
-          executionMode: queuedMsg.executionMode,
-          thinkingLevel: queuedMsg.thinkingLevel,
-          effortLevel: queuedMsg.effortLevel,
-          mcpConfig: queuedMsg.mcpConfig,
-          customProfileName: queuedMsg.provider ?? undefined,
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          allowedTools,
-        },
-        {
-          onSettled: () => {
-            // Clear processing flag when done
-            processingRef.current.delete(sessionId)
-          },
-        }
-      )
+          // Get session-approved tools
+          const sessionApprovedTools = store.getApprovedTools(capturedSessionId)
+          const allowedTools =
+            sessionApprovedTools.length > 0
+              ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
+              : undefined
+
+          // Build full message with attachment refs
+          const fullMessage = buildMessageWithRefs(msg)
+
+          // Send the message
+          sendMessage.mutate(
+            {
+              sessionId: capturedSessionId,
+              worktreeId: capturedWorktreeId,
+              worktreePath: capturedWorktreePath,
+              message: fullMessage,
+              model: msg.model,
+              executionMode: msg.executionMode,
+              thinkingLevel: msg.thinkingLevel,
+              effortLevel: msg.effortLevel,
+              mcpConfig: msg.mcpConfig,
+              customProfileName: msg.provider ?? undefined,
+              parallelExecutionPrompt:
+                preferences?.parallel_execution_prompt_enabled
+                  ? (preferences.magic_prompts?.parallel_execution ??
+                    DEFAULT_PARALLEL_EXECUTION_PROMPT)
+                  : undefined,
+              chromeEnabled: preferences?.chrome_enabled ?? false,
+              allowedTools,
+            },
+            {
+              onSettled: () => {
+                processingRef.current.delete(capturedSessionId)
+              },
+            }
+          )
+        })
+        .catch(err => {
+          logger.error('Queue processor: backend dequeue failed', {
+            sessionId: capturedSessionId,
+            err,
+          })
+          processingRef.current.delete(capturedSessionId)
+        })
     }
   }, [
     hasProcessableQueue,

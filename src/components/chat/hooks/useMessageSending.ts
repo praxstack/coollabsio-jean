@@ -2,7 +2,7 @@ import { useCallback, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
-import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
+import { chatQueryKeys, cancelChatMessage, persistEnqueue } from '@/services/chat'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type {
@@ -149,6 +149,8 @@ export function useMessageSending({
   const sendMessageNow = useCallback(
     (queuedMsg: QueuedMessage) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      console.log(`[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`)
 
       const {
         addSendingSession,
@@ -435,8 +437,12 @@ export function useMessageSending({
 
       scrollToBottom(true)
 
-      if (checkIsSendingNow(activeSessionId)) {
+      const isSendingNow = checkIsSendingNow(activeSessionId)
+      console.log(`[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`)
+      if (isSendingNow) {
+        console.log(`[Send] handleSubmit ENQUEUING (session is sending)`)
         enqueueMessage(activeSessionId, queuedMessage)
+        persistEnqueue(activeWorktreeId, activeWorktreePath, activeSessionId, queuedMessage)
         return
       }
 

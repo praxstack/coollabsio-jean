@@ -37,14 +37,14 @@ export function SessionTabBar({
   tabs: Tab[]
 }) {
   return (
-    <div className="flex border-b border-border">
+    <div className="flex overflow-x-auto border-b border-border scrollbar-hide">
       {tabs.map(tab => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
           tabIndex={-1}
           className={cn(
-            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            'flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors',
             'flex items-center justify-center gap-1.5',
             'hover:bg-accent focus:outline-none',
             'border-b-2',

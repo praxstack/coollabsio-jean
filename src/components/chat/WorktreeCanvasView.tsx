@@ -39,7 +39,7 @@ import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { CanvasList } from './CanvasList'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
   Search,
   Loader2,
@@ -189,7 +189,7 @@ export function WorktreeCanvasView({
 
   // Preferences for canvas layout
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
 
   // Search state
@@ -556,9 +556,8 @@ export function WorktreeCanvasView({
               variant="outline"
               value={canvasLayout}
               onValueChange={value => {
-                if (value && preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                if (value) {
+                  patchPreferences.mutate({
                     canvas_layout: value as 'grid' | 'list',
                   })
                 }

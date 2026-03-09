@@ -28,6 +28,12 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["preferences"]);
             Ok(Value::Null)
         }
+        "patch_preferences" => {
+            let patch: Value = from_field(&args, "patch")?;
+            crate::patch_preferences(app.clone(), patch).await?;
+            emit_cache_invalidation(app, &["preferences"]);
+            Ok(Value::Null)
+        }
         "load_ui_state" => {
             let result = crate::load_ui_state(app.clone()).await?;
             to_value(result)
@@ -1734,6 +1740,48 @@ pub async fn dispatch_command(
             let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
             let decision: String = from_field(&args, "decision")?;
             crate::chat::approve_codex_command(session_id, rpc_id, decision)?;
+            Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Queue management (cross-client sync)
+        // =====================================================================
+        "enqueue_message" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let message: Value = from_field(&args, "message")?;
+            let result = crate::chat::enqueue_message(
+                app.clone(), worktree_id, worktree_path, session_id, message,
+            ).await?;
+            to_value(result)
+        }
+        "dequeue_message" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result = crate::chat::dequeue_message(
+                app.clone(), worktree_id, worktree_path, session_id,
+            ).await?;
+            to_value(result)
+        }
+        "remove_queued_message" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let message_id: String = field(&args, "messageId", "message_id")?;
+            crate::chat::remove_queued_message(
+                app.clone(), worktree_id, worktree_path, session_id, message_id,
+            ).await?;
+            Ok(Value::Null)
+        }
+        "clear_message_queue" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            crate::chat::clear_message_queue(
+                app.clone(), worktree_id, worktree_path, session_id,
+            ).await?;
             Ok(Value::Null)
         }
 

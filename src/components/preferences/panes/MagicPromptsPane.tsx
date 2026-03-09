@@ -22,7 +22,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
@@ -439,7 +439,7 @@ const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
 
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const [selectedKey, setSelectedKey] =
     useState<keyof MagicPrompts>('investigate_issue')
   const [localValue, setLocalValue] = useState('')
@@ -559,8 +559,7 @@ export const MagicPromptsPane: React.FC = () => {
         // Save null if matches default (auto-updates on new versions), otherwise save the value
         const valueToSave =
           newValue === selectedConfig.defaultValue ? null : newValue
-        savePreferences.mutate({
-          ...preferences,
+        patchPreferences.mutate({
           magic_prompts: {
             ...currentPrompts,
             [selectedKey]: valueToSave,
@@ -570,7 +569,7 @@ export const MagicPromptsPane: React.FC = () => {
     },
     [
       preferences,
-      savePreferences,
+      patchPreferences,
       currentPrompts,
       selectedKey,
       selectedConfig.defaultValue,
@@ -585,8 +584,7 @@ export const MagicPromptsPane: React.FC = () => {
     if (localValue !== currentValue && preferences) {
       const valueToSave =
         localValue === selectedConfig.defaultValue ? null : localValue
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompts: {
           ...currentPrompts,
           [selectedKey]: valueToSave,
@@ -597,7 +595,7 @@ export const MagicPromptsPane: React.FC = () => {
     localValue,
     currentValue,
     preferences,
-    savePreferences,
+    patchPreferences,
     currentPrompts,
     selectedKey,
     selectedConfig.defaultValue,
@@ -605,34 +603,31 @@ export const MagicPromptsPane: React.FC = () => {
 
   const handleReset = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompts: {
         ...currentPrompts,
         [selectedKey]: null,
       },
     })
-  }, [preferences, savePreferences, currentPrompts, selectedKey])
+  }, [preferences, patchPreferences, currentPrompts, selectedKey])
 
   const handleModelChange = useCallback(
     (model: MagicPromptModel) => {
       if (!preferences || !selectedConfig.modelKey) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_models: {
           ...currentModels,
           [selectedConfig.modelKey]: model,
         },
       })
     },
-    [preferences, savePreferences, currentModels, selectedConfig.modelKey]
+    [preferences, patchPreferences, currentModels, selectedConfig.modelKey]
   )
 
   const handleProviderChange = useCallback(
     (provider: string) => {
       if (!preferences || !selectedConfig.providerKey) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_providers: {
           ...currentProviders,
           [selectedConfig.providerKey]:
@@ -640,7 +635,7 @@ export const MagicPromptsPane: React.FC = () => {
         },
       })
     },
-    [preferences, savePreferences, currentProviders, selectedConfig.providerKey]
+    [preferences, patchPreferences, currentProviders, selectedConfig.providerKey]
   )
 
   const handleBackendChange = useCallback(
@@ -657,8 +652,7 @@ export const MagicPromptsPane: React.FC = () => {
           defaultModel = opencodeModelOptions[0]?.value
         }
       }
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_backends: {
           ...currentBackends,
           [selectedConfig.backendKey]: backend,
@@ -675,7 +669,7 @@ export const MagicPromptsPane: React.FC = () => {
     },
     [
       preferences,
-      savePreferences,
+      patchPreferences,
       currentBackends,
       currentModels,
       selectedConfig.backendKey,
@@ -687,31 +681,28 @@ export const MagicPromptsPane: React.FC = () => {
 
   const handleApplyClaudeDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
       magic_prompt_backends: CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   const handleApplyCodexDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   const handleApplyOpenCodeDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   // Flush pending save when switching prompts
   const prevSelectedKeyRef = useRef(selectedKey)
@@ -729,8 +720,7 @@ export const MagicPromptsPane: React.FC = () => {
         if (localValue !== prevValue) {
           const valueToSave =
             localValue === prevConfig.defaultValue ? null : localValue
-          savePreferences.mutate({
-            ...preferences,
+          patchPreferences.mutate({
             magic_prompts: {
               ...currentPrompts,
               [prevKey]: valueToSave,

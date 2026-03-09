@@ -31,9 +31,13 @@ pub fn register_process(session_id: String, pid: u32) -> bool {
     // Check pending cancels first
     {
         let mut pending = PENDING_CANCELS.lock().unwrap();
+        log::info!(
+            "[Registry] register_process session={session_id} pid={pid} pending_cancels={:?}",
+            pending.iter().collect::<Vec<_>>()
+        );
         if pending.remove(&session_id) {
             log::warn!(
-                "Session {session_id} was cancelled before process registered, killing PID {pid}"
+                "[Registry] Session {session_id} was cancelled before process registered, killing PID {pid}"
             );
             use crate::platform::{kill_process, kill_process_tree};
             let _ = kill_process_tree(pid);
@@ -43,11 +47,7 @@ pub fn register_process(session_id: String, pid: u32) -> bool {
     }
 
     let mut registry = PROCESS_REGISTRY.lock().unwrap();
-    log::trace!("Registering Claude process pid={pid} for session: {session_id}");
-    log::trace!(
-        "Registry state before insert: {:?}",
-        registry.keys().collect::<Vec<_>>()
-    );
+    log::info!("[Registry] Registering process pid={pid} for session={session_id}, registry_keys={:?}", registry.keys().collect::<Vec<_>>());
     registry.insert(session_id, pid);
     true
 }
@@ -56,7 +56,10 @@ pub fn register_process(session_id: String, pid: u32) -> bool {
 /// Called when send_chat_message fails before reaching register_process,
 /// to prevent stale entries in the pending set.
 pub fn clear_pending_cancel(session_id: &str) {
-    PENDING_CANCELS.lock().unwrap().remove(session_id);
+    let existed = PENDING_CANCELS.lock().unwrap().remove(session_id);
+    if existed {
+        log::info!("[Registry] clear_pending_cancel session={session_id} (entry existed)");
+    }
 }
 
 /// Remove a process from the registry (called after completion or cancellation)
@@ -211,9 +214,9 @@ pub fn cancel_process(
     } else {
         // Process not yet registered — queue for pending cancellation.
         // When register_process or register_cancel_flag is called later, the cancel is applied immediately.
-        log::warn!("No PID or cancel flag for session {session_id}, queuing pending cancellation");
         {
             let mut pending = PENDING_CANCELS.lock().unwrap();
+            log::warn!("[Registry] cancel_process: no PID/flag for session={session_id}, adding to PENDING_CANCELS (before={:?})", pending.iter().collect::<Vec<_>>());
             pending.insert(session_id.to_string());
         }
 

@@ -129,6 +129,7 @@ export interface InitialData {
   worktreesByProject: Record<string, unknown[]>
   sessionsByWorktree: Record<string, unknown> // worktreeId -> WorktreeSessions
   activeSessions?: Record<string, unknown> // sessionId -> Session (with messages)
+  runningSessions?: string[] // sessionIds with active CLI processes
   preferences: unknown
   uiState: unknown
   appDataDir?: string
@@ -172,6 +173,28 @@ export async function preloadInitialData(): Promise<InitialData | null> {
   })()
 
   return initialDataPromise
+}
+
+/**
+ * Re-fetch initial data via HTTP (bypasses memoization).
+ * Used on WebSocket reconnect to bulk-reload fresh state.
+ */
+export async function refetchInitialData(): Promise<InitialData | null> {
+  if (isNativeApp()) return null
+
+  const urlToken = new URLSearchParams(window.location.search).get('token')
+  const token = urlToken || localStorage.getItem('jean-http-token') || ''
+
+  try {
+    const url = token
+      ? `/api/init?token=${encodeURIComponent(token)}`
+      : '/api/init'
+    const response = await fetch(url)
+    if (!response.ok) return null
+    return (await response.json()) as InitialData
+  } catch {
+    return null
+  }
 }
 
 /**

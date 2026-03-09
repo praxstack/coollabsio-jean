@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { useUIStore } from '@/store/ui-store'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { formatShortcutDisplay, type ShortcutString } from '@/types/keybindings'
 
 interface ShortcutRow {
@@ -106,16 +106,13 @@ function FeatureTourDialogContent() {
   const [stepIndex, setStepIndex] = useState(0)
   const { setFeatureTourOpen } = useUIStore.getState()
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   const markSeen = useCallback(() => {
     if (preferences && !preferences.has_seen_feature_tour) {
-      savePreferences.mutate({
-        ...preferences,
-        has_seen_feature_tour: true,
-      })
+      patchPreferences.mutate({ has_seen_feature_tour: true })
     }
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   const handleClose = useCallback(() => {
     setFeatureTourOpen(false)

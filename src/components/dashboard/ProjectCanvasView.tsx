@@ -98,7 +98,7 @@ import {
   useCloseBaseSessionArchive,
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession, useRenameSession } from '@/services/chat'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 const GitDiffModal = lazy(() =>
@@ -494,7 +494,7 @@ function WorktreeSectionHeader({
 export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Preferences for canvas layout
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
   const isListLayout = canvasLayout === 'list'
 
@@ -1948,9 +1948,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   variant="outline"
                   value={canvasLayout}
                   onValueChange={value => {
-                    if (value && preferences) {
-                      savePreferences.mutate({
-                        ...preferences,
+                    if (value) {
+                      patchPreferences.mutate({
                         canvas_layout: value as 'grid' | 'list',
                       })
                     }
@@ -2220,6 +2219,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
         isOpen={!!selectedWorktreeModal}
         onClose={() => setSelectedWorktreeModal(null)}
+        onCloseWorktree={() => setSelectedWorktreeModal(null)}
       />
 
       {/* Git Diff Modal (CMD+G on canvas) */}

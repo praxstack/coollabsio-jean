@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useTheme } from '@/hooks/use-theme'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
   uiFontOptions,
   chatFontOptions,
@@ -79,7 +79,7 @@ const modKey = isMacOS ? 'Cmd' : 'Ctrl'
 export const AppearancePane: React.FC = () => {
   const { theme, setTheme } = useTheme()
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   // Zoom uses commit-only saving to avoid flickering the webview during drag.
   // localZoom tracks slider position, preferences are saved only on release.
@@ -90,57 +90,47 @@ export const AppearancePane: React.FC = () => {
   const handleThemeChange = useCallback(
     async (value: 'light' | 'dark' | 'system') => {
       setTheme(value)
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, theme: value })
-      }
+      patchPreferences.mutate({ theme: value })
     },
-    [setTheme, savePreferences, preferences]
+    [setTheme, patchPreferences]
   )
 
   const handleFontSizeChange = useCallback(
     (field: 'ui_font_size' | 'chat_font_size', value: number) => {
-      if (preferences && !isNaN(value) && value > 0) {
-        savePreferences.mutate({ ...preferences, [field]: value })
+      if (!isNaN(value) && value > 0) {
+        patchPreferences.mutate({ [field]: value })
       }
     },
-    [savePreferences, preferences]
+    [patchPreferences]
   )
 
   const handleZoomCommit = useCallback(
     (value: number) => {
       setLocalZoom(null)
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, zoom_level: value })
-      }
+      patchPreferences.mutate({ zoom_level: value })
     },
-    [savePreferences, preferences]
+    [patchPreferences]
   )
 
   const handleFontChange = useCallback(
     (field: 'ui_font' | 'chat_font', value: UIFont | ChatFont) => {
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, [field]: value })
-      }
+      patchPreferences.mutate({ [field]: value })
     },
-    [savePreferences, preferences]
+    [patchPreferences]
   )
 
   const handleSyntaxThemeChange = useCallback(
     (field: 'syntax_theme_dark' | 'syntax_theme_light', value: SyntaxTheme) => {
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, [field]: value })
-      }
+      patchPreferences.mutate({ [field]: value })
     },
-    [savePreferences, preferences]
+    [patchPreferences]
   )
 
   const handleFileEditModeChange = useCallback(
     (value: FileEditMode) => {
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, file_edit_mode: value })
-      }
+      patchPreferences.mutate({ file_edit_mode: value })
     },
-    [savePreferences, preferences]
+    [patchPreferences]
   )
 
   return (
@@ -154,7 +144,7 @@ export const AppearancePane: React.FC = () => {
             <Select
               value={theme}
               onValueChange={handleThemeChange}
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select theme" />
@@ -179,7 +169,7 @@ export const AppearancePane: React.FC = () => {
                   value as SyntaxTheme
                 )
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger className="w-52">
                 <SelectValue placeholder="Select theme" />
@@ -206,7 +196,7 @@ export const AppearancePane: React.FC = () => {
                   value as SyntaxTheme
                 )
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger className="w-52">
                 <SelectValue placeholder="Select theme" />
@@ -231,7 +221,7 @@ export const AppearancePane: React.FC = () => {
               onValueChange={value =>
                 handleFontChange('ui_font', value as UIFont)
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger className="w-44">
                 <SelectValue placeholder="Select font" />
@@ -252,7 +242,7 @@ export const AppearancePane: React.FC = () => {
               onValueChange={value =>
                 handleFontChange('chat_font', value as ChatFont)
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger className="w-44">
                 <SelectValue placeholder="Select font" />
@@ -281,7 +271,7 @@ export const AppearancePane: React.FC = () => {
               onValueChange={value =>
                 handleFontSizeChange('ui_font_size', value)
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             />
           </ScalingField>
 
@@ -295,7 +285,7 @@ export const AppearancePane: React.FC = () => {
               onValueChange={value =>
                 handleFontSizeChange('chat_font_size', value)
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             />
           </ScalingField>
 
@@ -308,7 +298,7 @@ export const AppearancePane: React.FC = () => {
               value={zoomValue}
               onValueChange={setLocalZoom}
               onValueCommit={handleZoomCommit}
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             />
             <p className="text-xs text-muted-foreground">
               You can change the zoom level with {modKey} +/- and reset to the
@@ -329,7 +319,7 @@ export const AppearancePane: React.FC = () => {
               onValueChange={value =>
                 handleFileEditModeChange(value as FileEditMode)
               }
-              disabled={savePreferences.isPending}
+              disabled={patchPreferences.isPending}
             >
               <SelectTrigger className="w-52">
                 <SelectValue placeholder="Select mode" />

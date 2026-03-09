@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { modelOptions, type ClaudeModel } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
@@ -43,7 +43,7 @@ const InlineField: React.FC<{
 
 export const ExperimentalPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
@@ -62,12 +62,7 @@ export const ExperimentalPane: React.FC = () => {
             <Switch
               checked={preferences?.parallel_execution_prompt_enabled ?? false}
               onCheckedChange={checked => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    parallel_execution_prompt_enabled: checked,
-                  })
-                }
+                patchPreferences.mutate({ parallel_execution_prompt_enabled: checked })
               }}
             />
           </InlineField>
@@ -79,12 +74,7 @@ export const ExperimentalPane: React.FC = () => {
             <Switch
               checked={preferences?.session_recap_enabled ?? false}
               onCheckedChange={checked => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    session_recap_enabled: checked,
-                  })
-                }
+                patchPreferences.mutate({ session_recap_enabled: checked })
               }}
             />
           </InlineField>
@@ -97,8 +87,7 @@ export const ExperimentalPane: React.FC = () => {
               value={preferences?.magic_prompt_models.session_recap_model ?? 'haiku'}
               onValueChange={(value: ClaudeModel) => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     magic_prompt_models: {
                       ...preferences.magic_prompt_models,
                       session_recap_model: value,
@@ -130,12 +119,7 @@ export const ExperimentalPane: React.FC = () => {
           <Switch
             checked={preferences?.debug_mode_enabled ?? false}
             onCheckedChange={checked => {
-              if (preferences) {
-                savePreferences.mutate({
-                  ...preferences,
-                  debug_mode_enabled: checked,
-                })
-              }
+              patchPreferences.mutate({ debug_mode_enabled: checked })
             }}
           />
         </InlineField>

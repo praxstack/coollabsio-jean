@@ -63,6 +63,7 @@ export function usePlanApproval({
 
   const handlePlanApproval = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
+      console.warn('[usePlanApproval] handlePlanApproval (BUILD) CALLED', card.session.id)
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -117,22 +118,21 @@ export function usePlanApproval({
       }
 
       setExecutionMode(sessionId, 'build')
+      console.log('[usePlanApproval] Broadcasting executionMode=build for session', sessionId)
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'executionMode',
+        value: 'build',
+      }).then(() => {
+        console.log('[usePlanApproval] Broadcast executionMode=build succeeded')
+      }).catch(err => {
+        console.error('[usePlanApproval] Broadcast executionMode=build failed:', err)
+      })
       clearToolCalls(sessionId)
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
-
-      // Persist cleared waiting state to backend so refetch loads correct data
-      invoke('update_session_state', {
-        worktreeId,
-        worktreePath,
-        sessionId,
-        waitingForInput: false,
-        waitingForInputType: null,
-      }).catch(err => {
-        console.error('[usePlanApproval] Failed to clear waiting state:', err)
-      })
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
@@ -150,22 +150,39 @@ export function usePlanApproval({
       const buildInfo = [sessionBackend, model].filter(Boolean).join(' / ')
       const message = buildInfo ? `[Build: ${buildInfo}]\n${rawMessage}` : rawMessage
 
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, model)
-      setExecutingMode(sessionId, 'build')
-
-      sendMessage.mutate({
-        sessionId,
+      // Persist cleared waiting state to backend BEFORE sending the message.
+      // On WebSocket (web access), commands are dispatched concurrently via tokio::spawn.
+      // Without awaiting, send_chat_message can start before update_session_state writes
+      // to disk, causing chat:sending's invalidateQueries to refetch stale waiting_for_input.
+      invoke('update_session_state', {
         worktreeId,
         worktreePath,
-        message,
-        model,
-        executionMode: 'build',
-        thinkingLevel,
-        customProfileName: card.session.selected_provider ?? undefined,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+        selectedExecutionMode: 'build',
       })
+        .catch(err => {
+          console.error('[usePlanApproval] Failed to clear waiting state:', err)
+        })
+        .finally(() => {
+          setLastSentMessage(sessionId, message)
+          setError(sessionId, null)
+          addSendingSession(sessionId)
+          setSelectedModel(sessionId, model)
+          setExecutingMode(sessionId, 'build')
+
+          sendMessage.mutate({
+            sessionId,
+            worktreeId,
+            worktreePath,
+            message,
+            model,
+            executionMode: 'build',
+            thinkingLevel,
+            customProfileName: card.session.selected_provider ?? undefined,
+          })
+        })
     },
     [
       worktreeId,
@@ -189,6 +206,7 @@ export function usePlanApproval({
 
   const handlePlanApprovalYolo = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
+      console.warn('[usePlanApproval] handlePlanApprovalYolo (YOLO) CALLED', card.session.id)
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -241,22 +259,21 @@ export function usePlanApproval({
       }
 
       setExecutionMode(sessionId, 'yolo')
+      console.log('[usePlanApproval] Broadcasting executionMode=yolo for session', sessionId)
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'executionMode',
+        value: 'yolo',
+      }).then(() => {
+        console.log('[usePlanApproval] Broadcast executionMode=yolo succeeded')
+      }).catch(err => {
+        console.error('[usePlanApproval] Broadcast executionMode=yolo failed:', err)
+      })
       clearToolCalls(sessionId)
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
-
-      // Persist cleared waiting state to backend so refetch loads correct data
-      invoke('update_session_state', {
-        worktreeId,
-        worktreePath,
-        sessionId,
-        waitingForInput: false,
-        waitingForInputType: null,
-      }).catch(err => {
-        console.error('[usePlanApproval] Failed to clear waiting state:', err)
-      })
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
@@ -273,22 +290,37 @@ export function usePlanApproval({
       const yoloInfo = [sessionBackend, model].filter(Boolean).join(' / ')
       const message = yoloInfo ? `[Yolo: ${yoloInfo}]\n${rawMessage}` : rawMessage
 
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, model)
-      setExecutingMode(sessionId, 'yolo')
-
-      sendMessage.mutate({
-        sessionId,
+      // Persist cleared waiting state to backend BEFORE sending the message.
+      // See handlePlanApproval comment for why this must be awaited.
+      invoke('update_session_state', {
         worktreeId,
         worktreePath,
-        message,
-        model,
-        executionMode: 'yolo',
-        thinkingLevel,
-        customProfileName: card.session.selected_provider ?? undefined,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+        selectedExecutionMode: 'yolo',
       })
+        .catch(err => {
+          console.error('[usePlanApproval] Failed to clear waiting state:', err)
+        })
+        .finally(() => {
+          setLastSentMessage(sessionId, message)
+          setError(sessionId, null)
+          addSendingSession(sessionId)
+          setSelectedModel(sessionId, model)
+          setExecutingMode(sessionId, 'yolo')
+
+          sendMessage.mutate({
+            sessionId,
+            worktreeId,
+            worktreePath,
+            message,
+            model,
+            executionMode: 'yolo',
+            thinkingLevel,
+            customProfileName: card.session.selected_provider ?? undefined,
+          })
+        })
     },
     [
       worktreeId,

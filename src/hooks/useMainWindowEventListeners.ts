@@ -9,6 +9,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
+import type { QueuedMessage } from '@/types/chat'
 import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
@@ -624,6 +625,29 @@ export function useMainWindowEventListeners() {
           })
           // Silent failure - don't show toast to avoid interrupting workflow
         }),
+
+        // Queue sync between native + web clients.
+        // When another client enqueues/dequeues, update local Zustand state.
+        listen<{ sessionId: string; queue: QueuedMessage[] }>(
+          'queue:updated',
+          event => {
+            const { sessionId, queue } = event.payload
+            const currentQueue =
+              useChatStore.getState().messageQueues[sessionId] ?? []
+            // Skip if the queue already matches (this client caused the event)
+            if (
+              currentQueue.length === queue.length &&
+              currentQueue[0]?.id === queue[0]?.id
+            )
+              return
+            useChatStore.setState(state => ({
+              messageQueues: {
+                ...state.messageQueues,
+                [sessionId]: queue,
+              },
+            }))
+          }
+        ),
 
         // Real-time cache sync between native + web clients.
         // Debounce: collect keys over a 250ms window, then flush once.

@@ -522,6 +522,10 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
 
     // Use the cleaned ui_state (with stale active_session_ids removed) if available,
     // otherwise fall back to the original result for error handling
+    // Include currently running session IDs so web clients can restore sending state
+    let running_sessions = crate::chat::registry::get_running_sessions();
+    response["runningSessions"] = serde_json::to_value(&running_sessions).unwrap_or_default();
+
     match ui_state {
         Some(cleaned_ui) => {
             if let Ok(val) = serde_json::to_value(&cleaned_ui) {

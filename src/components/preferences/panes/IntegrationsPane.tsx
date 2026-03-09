@@ -4,7 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 
 const SettingsSection: React.FC<{
   title: string
@@ -37,7 +37,7 @@ const InlineField: React.FC<{
 
 export const IntegrationsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
 
   const [localLinearApiKey, setLocalLinearApiKey] = useState<string | null>(null)
   const [showLinearApiKey, setShowLinearApiKey] = useState(false)
@@ -48,20 +48,16 @@ export const IntegrationsPane: React.FC = () => {
     localLinearApiKey !== null && localLinearApiKey !== currentGlobalKey
 
   const handleSaveLinearApiKey = () => {
-    if (!preferences || localLinearApiKey === null) return
-    savePreferences.mutate(
-      {
-        ...preferences,
-        linear_api_key: localLinearApiKey.trim() || null,
-      },
+    if (localLinearApiKey === null) return
+    patchPreferences.mutate(
+      { linear_api_key: localLinearApiKey.trim() || null },
       { onSuccess: () => setLocalLinearApiKey(null) }
     )
   }
 
   const handleClearLinearApiKey = () => {
-    if (!preferences) return
-    savePreferences.mutate(
-      { ...preferences, linear_api_key: null },
+    patchPreferences.mutate(
+      { linear_api_key: null },
       { onSuccess: () => setLocalLinearApiKey(null) }
     )
   }
@@ -106,9 +102,9 @@ export const IntegrationsPane: React.FC = () => {
             <Button
               size="sm"
               onClick={handleSaveLinearApiKey}
-              disabled={!linearApiKeyChanged || savePreferences.isPending}
+              disabled={!linearApiKeyChanged || patchPreferences.isPending}
             >
-              {savePreferences.isPending && (
+              {patchPreferences.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
               Save
@@ -118,7 +114,7 @@ export const IntegrationsPane: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearLinearApiKey}
-                disabled={savePreferences.isPending}
+                disabled={patchPreferences.isPending}
               >
                 Remove
               </Button>

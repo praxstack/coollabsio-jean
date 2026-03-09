@@ -17,7 +17,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
@@ -62,7 +62,7 @@ interface ServerStatus {
 
 export const WebAccessPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
   const [tokenVisible, setTokenVisible] = useState(false)
   const [isToggling, setIsToggling] = useState(false)
@@ -116,26 +116,24 @@ export const WebAccessPane: React.FC = () => {
 
   const handlePortBlur = useCallback(() => {
     const port = parseInt(portInput, 10)
-    if (preferences && !isNaN(port) && port >= 1024 && port <= 65535) {
-      savePreferences.mutate({ ...preferences, http_server_port: port })
+    if (!isNaN(port) && port >= 1024 && port <= 65535) {
+      patchPreferences.mutate({ http_server_port: port })
     } else {
       // Reset to current preference value on invalid input
       setPortInput(String(preferences?.http_server_port ?? 3456))
     }
-  }, [portInput, savePreferences, preferences])
+  }, [portInput, patchPreferences, preferences])
 
   const handleRegenerateToken = useCallback(async () => {
     try {
       const newToken = await invoke<string>('regenerate_http_token')
-      if (preferences) {
-        savePreferences.mutate({ ...preferences, http_server_token: newToken })
-      }
+      patchPreferences.mutate({ http_server_token: newToken })
       await refreshStatus()
       toast.success('Token regenerated')
     } catch (error) {
       toast.error(`Failed to regenerate token: ${error}`)
     }
-  }, [savePreferences, preferences, refreshStatus])
+  }, [patchPreferences, refreshStatus])
 
   const tokenRequired = preferences?.http_server_token_required ?? true
 
@@ -153,11 +151,7 @@ export const WebAccessPane: React.FC = () => {
 
   const handleLocalhostOnlyChange = useCallback(
     async (checked: boolean) => {
-      if (!preferences) return
-      savePreferences.mutate({
-        ...preferences,
-        http_server_localhost_only: checked,
-      })
+      patchPreferences.mutate({ http_server_localhost_only: checked })
 
       // Restart server if currently running
       if (serverStatus?.running) {
@@ -176,7 +170,7 @@ export const WebAccessPane: React.FC = () => {
         }
       }
     },
-    [preferences, savePreferences, serverStatus?.running, refreshStatus]
+    [patchPreferences, serverStatus?.running, refreshStatus]
   )
 
   const handleCopyToken = useCallback(() => {
@@ -188,11 +182,7 @@ export const WebAccessPane: React.FC = () => {
 
   const handleTokenRequiredChange = useCallback(
     async (checked: boolean) => {
-      if (!preferences) return
-      savePreferences.mutate({
-        ...preferences,
-        http_server_token_required: checked,
-      })
+      patchPreferences.mutate({ http_server_token_required: checked })
 
       // Restart server if currently running to apply the change
       if (serverStatus?.running) {
@@ -210,7 +200,7 @@ export const WebAccessPane: React.FC = () => {
         }
       }
     },
-    [preferences, savePreferences, serverStatus?.running, refreshStatus]
+    [patchPreferences, serverStatus?.running, refreshStatus]
   )
 
   if (!isNativeApp()) {
@@ -288,12 +278,7 @@ export const WebAccessPane: React.FC = () => {
             <Switch
               checked={preferences?.http_server_auto_start ?? false}
               onCheckedChange={checked => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    http_server_auto_start: checked,
-                  })
-                }
+                patchPreferences.mutate({ http_server_auto_start: checked })
               }}
             />
           </InlineField>

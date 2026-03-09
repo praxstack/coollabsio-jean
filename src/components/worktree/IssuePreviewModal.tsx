@@ -14,7 +14,7 @@ import {
   Package,
   FileCode,
 } from 'lucide-react'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { openExternal } from '@/lib/platform'
 import {
   Dialog,
   DialogContent,
@@ -623,15 +623,21 @@ export function IssuePreviewModal({
             : securityQuery.data?.htmlUrl
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-screen !max-w-screen sm:!w-[90vw] sm:!max-w-4xl sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden z-[80] [&>[data-slot=dialog-close]]:top-6">
+    <Dialog open={open} onOpenChange={open => {
+      console.log('[DIALOG-DEBUG] Preview onOpenChange', { open })
+      onOpenChange(open)
+    }}>
+      <DialogContent
+        className="!fixed !inset-0 !translate-x-0 !translate-y-0 !w-screen !h-[100dvh] !max-w-none !max-h-none !rounded-none sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[90vw] sm:!max-w-4xl sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden z-[80] [&>[data-slot=dialog-close]]:top-6"
+
+      >
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-lg flex items-center gap-2">
             {TYPE_LABELS[type]}{' '}
             {type === 'advisory' ? ghsaId : `#${number}`}
             {githubUrl && (
               <button
-                onClick={() => openUrl(githubUrl)}
+                onClick={() => openExternal(githubUrl)}
                 className="p-1 rounded hover:bg-accent transition-colors"
                 title="Open on GitHub"
               >

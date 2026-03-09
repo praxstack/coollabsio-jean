@@ -140,11 +140,18 @@ export default function useStreamingEvents({
       user_message: string
     }>('chat:sending', event => {
       const { session_id, worktree_id: wtId, user_message } = event.payload
+      // Check if THIS client initiated the send (sender calls addSendingSession
+      // before sendMessage.mutate, so it's already in sendingSessionIds).
+      const isSender = !!useChatStore.getState().sendingSessionIds[session_id]
       addSendingSession(session_id)
-      // Invalidate sessions list so non-sender windows update metadata.
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(wtId),
-      })
+      // Only invalidate for non-sender clients. The sender already has correct
+      // optimistic state; refetching can overwrite it with stale disk data
+      // (especially on WebSocket where dispatch is concurrent).
+      if (!isSender) {
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(wtId),
+        })
+      }
       // Add the user message to the session cache so cross-client viewers
       // see it immediately. Skip if this client already has the message
       // (the sender added it via onMutate optimistic update).
@@ -178,9 +185,12 @@ export default function useStreamingEvents({
     })
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
-      appendStreamingContent(event.payload.session_id, event.payload.content)
+      const { session_id, content } = event.payload
+      // Ensure session is marked as sending (recovers state after reconnect/refresh)
+      addSendingSession(session_id)
+      appendStreamingContent(session_id, content)
       // Also add to content blocks for inline rendering
-      addTextBlock(event.payload.session_id, event.payload.content)
+      addTextBlock(session_id, content)
     })
 
     const unlistenToolUse = listen<ToolUseEvent>('chat:tool_use', event => {
@@ -272,6 +282,8 @@ export default function useStreamingEvents({
     const unlistenDone = listen<DoneEvent>('chat:done', event => {
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
+
+      console.log(`[Done] chat:done received session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
 
       const {
         streamingContents,
@@ -714,6 +726,7 @@ export default function useStreamingEvents({
         )
 
         // 3. Batch-clear all streaming state in a single Zustand set() — one notification to subscribers
+        console.log(`[Done] about to completeSession session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
         completeSession(sessionId)
 
         // Persist reviewing state to disk BEFORE invalidating queries.
@@ -1002,6 +1015,8 @@ export default function useStreamingEvents({
           undo_send,
         } = event.payload
 
+        console.log(`[Cancelled] chat:cancelled received session=${session_id} undo_send=${undo_send}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
+
         // Capture streaming state BEFORE clearing (like chat:done does)
         const {
           streamingContents,
@@ -1205,6 +1220,7 @@ export default function useStreamingEvents({
 
         // NOW batch-clear all streaming state in a single Zustand set()
         // This happens AFTER optimistic messages are in the cache, preventing flicker
+        console.log(`[Cancelled] about to completeSession session=${session_id} shouldRestore=${shouldRestoreMessage}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
         useChatStore.getState().completeSession(session_id)
 
         // For restore path: override reviewing state based on whether messages remain

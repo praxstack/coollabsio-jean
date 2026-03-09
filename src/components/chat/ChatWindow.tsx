@@ -51,7 +51,7 @@ import {
   DEFAULT_THINKING_LEVEL,
   type ClaudeModel,
 } from '@/store/chat-store'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { PREDEFINED_CLI_PROFILES, type CliBackend } from '@/types/preferences'
 import type {
@@ -359,7 +359,7 @@ export function ChatWindow({
   )
 
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const isViewingCanvasTab = isViewingCanvasTabRaw
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const focusChatShortcut = formatShortcutDisplay(
@@ -655,6 +655,7 @@ export function ChatWindow({
         EMPTY_PERMISSION_DENIALS)
       : EMPTY_PERMISSION_DENIALS
   )
+
 
   // PERFORMANCE: Pre-compute last assistant message to avoid rescanning in multiple memos
   // This reference only changes when the actual last assistant message changes
@@ -1700,7 +1701,6 @@ export function ChatWindow({
     handleStreamingWorktreeBuildApproval,
     handleWorktreeYoloApproval,
     handleStreamingWorktreeYoloApproval,
-    handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
     handlePermissionDeny,
@@ -1812,7 +1812,7 @@ export function ChatWindow({
     currentQueuedMessages,
     createSession,
     preferences,
-    savePreferences,
+    patchPreferences,
     handleSaveContext,
     handleLoadContext,
     runScript,
@@ -1831,6 +1831,37 @@ export function ChatWindow({
     beginKeyboardScroll,
     endKeyboardScroll,
   })
+
+  // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
+  const floatingApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingPlanApproval()
+    else if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingPlanApproval, pendingPlanMessage, handlePlanApproval])
+
+  const floatingYoloApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingPlanApprovalYolo()
+    else if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingPlanApprovalYolo, pendingPlanMessage, handlePlanApprovalYolo])
+
+  const floatingClearContextBuildApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingClearContextApprovalBuild()
+    else if (pendingPlanMessage) handleClearContextApprovalBuild(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingClearContextApprovalBuild, pendingPlanMessage, handleClearContextApprovalBuild])
+
+  const floatingClearContextApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingClearContextApproval()
+    else if (pendingPlanMessage) handleClearContextApproval(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingClearContextApproval, pendingPlanMessage, handleClearContextApproval])
+
+  const floatingWorktreeBuildApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingWorktreeBuildApproval()
+    else if (pendingPlanMessage) handleWorktreeBuildApproval(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingWorktreeBuildApproval, pendingPlanMessage, handleWorktreeBuildApproval])
+
+  const floatingWorktreeYoloApprove = useCallback(() => {
+    if (hasStreamingPlan) handleStreamingWorktreeYoloApproval()
+    else if (pendingPlanMessage) handleWorktreeYoloApproval(pendingPlanMessage.id)
+  }, [hasStreamingPlan, handleStreamingWorktreeYoloApproval, pendingPlanMessage, handleWorktreeYoloApproval])
 
   // Pending attachment removal, slash command execution, queue management
   const {
@@ -2123,16 +2154,16 @@ export function ChatWindow({
 
                       {/* Floating scroll buttons */}
                       <FloatingButtons
-                        hasPendingPlan={!!pendingPlanMessage}
-                        hasStreamingPlan={hasStreamingPlan}
+                        showApproveButton={!isCodexBackend && (!!pendingPlanMessage || hasStreamingPlan)}
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom}
                         approveShortcut={approveShortcut}
-                        hideApproveButtons={isCodexBackend}
-                        onStreamingPlanApproval={handleStreamingPlanApproval}
-                        onPendingPlanApproval={
-                          handlePendingPlanApprovalCallback
-                        }
+                        onApprove={floatingApprove}
+                        onYoloApprove={floatingYoloApprove}
+                        onClearContextBuildApprove={floatingClearContextBuildApprove}
+                        onClearContextApprove={floatingClearContextApprove}
+                        onWorktreeBuildApprove={worktree?.project_id ? floatingWorktreeBuildApprove : undefined}
+                        onWorktreeYoloApprove={worktree?.project_id ? floatingWorktreeYoloApprove : undefined}
                         onScrollToFindings={scrollToFindings}
                         onScrollToBottom={scrollToBottom}
                       />
