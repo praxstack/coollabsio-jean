@@ -76,13 +76,23 @@ export function getOrCreateTerminal(
     allowProposedApi: true,
   })
 
-  // Let CMD combos pass through to the app's global shortcut handler
-  // so CMD+T, CMD+W, CMD+1-9, etc. work while terminal is focused.
-  // Note: only intercept metaKey (CMD on macOS), NOT ctrlKey —
-  // Ctrl+C/D/Z/L etc. must reach the PTY for terminal signal handling.
+  // Block most app shortcuts when terminal is focused. Only let specific CMD
+  // combos bubble to the global handler for terminal-specific actions.
+  // Ctrl+C/D/Z/L etc. always reach the PTY for terminal signal handling.
   terminal.attachCustomKeyEventHandler(event => {
     if (event.metaKey) {
-      return false
+      const code = event.code
+      // CMD+` → toggle terminal panel
+      if (code === 'Backquote') return false
+      // CMD+T → new terminal tab
+      if (!event.shiftKey && !event.altKey && code === 'KeyT') return false
+      // CMD+W → close terminal tab
+      if (!event.shiftKey && !event.altKey && code === 'KeyW') return false
+      // CMD+Alt+Backspace → cancel prompt
+      if (event.altKey && (code === 'Backspace' || code === 'Delete'))
+        return false
+      // All other CMD shortcuts: xterm consumes them (prevents app actions)
+      return true
     }
     return true
   })

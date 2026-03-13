@@ -33,22 +33,25 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   const visible = isSending || showRestored
 
   return (
-    <span
-      className={
-        visible
-          ? 'mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono select-none'
-          : 'h-0 overflow-hidden block'
-      }
-    >
-      {showRestored ? (
-        <span className="animate-dots">
-          {getModeLabel(restoredExecutionMode)}
-        </span>
-      ) : (
-        <>
-          {getModeLabel(streamingExecutionMode)} for {elapsed ?? '0s'}
-        </>
-      )}
-    </span>
+    <div className="mt-1 min-h-4">
+      <span
+        className={
+          visible
+            ? 'block text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono select-none'
+            : 'invisible block text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono select-none'
+        }
+        aria-hidden={!visible}
+      >
+        {showRestored ? (
+          <span className="animate-dots">
+            {getModeLabel(restoredExecutionMode)}
+          </span>
+        ) : (
+          <>
+            {getModeLabel(streamingExecutionMode)} for {elapsed ?? '0s'}
+          </>
+        )}
+      </span>
+    </div>
   )
 })

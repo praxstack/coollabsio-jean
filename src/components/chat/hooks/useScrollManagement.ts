@@ -73,6 +73,56 @@ export function useScrollManagement({
     }
   }, [])
 
+  // [Tier 1] IntersectionObserver for findings visibility.
+  // Replaces per-scroll getBoundingClientRect() calls with an observer that
+  // only fires on visibility boundary crossings.
+  useEffect(() => {
+    const viewport = scrollViewportRef.current
+    if (!viewport) return
+
+    let currentTarget: Element | null = null
+
+    const intersectionObs = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          setAreFindingsVisible(entry.isIntersecting)
+        }
+      },
+      { root: viewport, threshold: 0 }
+    )
+
+    const observeFindings = () => {
+      const el = viewport.querySelector('[data-review-findings="unfixed"]')
+      if (el !== currentTarget) {
+        if (currentTarget) intersectionObs.unobserve(currentTarget)
+        currentTarget = el
+        if (el) {
+          intersectionObs.observe(el)
+        } else {
+          // No findings element → treat as visible (hides "scroll to findings" button)
+          setAreFindingsVisible(true)
+        }
+      }
+    }
+
+    // Initial check
+    observeFindings()
+
+    // Re-check when DOM changes (findings may appear/disappear)
+    const mutationObs = new MutationObserver(observeFindings)
+    mutationObs.observe(viewport, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-review-findings'],
+    })
+
+    return () => {
+      intersectionObs.disconnect()
+      mutationObs.disconnect()
+    }
+  }, [])
+
   // Detect user scrolling up during auto-scroll and break the lock
   useEffect(() => {
     const viewport = scrollViewportRef.current
@@ -99,56 +149,74 @@ export function useScrollManagement({
     return () => viewport.removeEventListener('wheel', handleWheel)
   }, [])
 
-  // Auto-scroll during streaming using ResizeObserver.
-  // Fires when the scroll content container grows (frame-perfect tracking).
-  // Uses instant scroll (not smooth) to avoid cascading animation issues.
+  // [Tier 2 + 5] Auto-scroll during streaming using ResizeObserver.
+  // rAF-coalesced: at most one scroll per animation frame.
+  // Plan elements use direct scrollTop instead of scrollIntoView.
   useEffect(() => {
     if (!isSending) return
 
     const viewport = scrollViewportRef.current
     if (!viewport || !viewport.firstElementChild) return
 
-    const observer = new ResizeObserver(() => {
-      // Respect cooldown after user scrolled up
-      if (Date.now() < userScrollUpUntilRef.current) return
-      // Don't scroll if user has scrolled away from bottom
-      if (!isAtBottomRef.current) return
+    let rafId = 0
 
-      // If a plan is visible during streaming, pin it to the top of the viewport
-      const planEl = viewport.querySelector('[data-plan-display]')
-      if (planEl) {
-        isAutoScrollingRef.current = true
-        planEl.scrollIntoView({ block: 'start' })
-        requestAnimationFrame(() => {
-          isAutoScrollingRef.current = false
-        })
-      } else {
-        viewport.scrollTop = viewport.scrollHeight
-      }
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        // Respect cooldown after user scrolled up
+        if (Date.now() < userScrollUpUntilRef.current) return
+        // Don't scroll if user has scrolled away from bottom
+        if (!isAtBottomRef.current) return
+
+        // [Tier 5] If a plan is visible, pin it to the top using direct scrollTop
+        const planEl = viewport.querySelector(
+          '[data-plan-display]'
+        ) as HTMLElement | null
+        if (planEl) {
+          // Accumulate offsetTop up the offsetParent chain to the viewport
+          let offset = 0
+          let el: HTMLElement | null = planEl
+          while (el && el !== viewport) {
+            offset += el.offsetTop
+            el = el.offsetParent as HTMLElement | null
+          }
+          viewport.scrollTop = offset
+        } else {
+          viewport.scrollTop = viewport.scrollHeight
+        }
+      })
     })
 
     observer.observe(viewport.firstElementChild)
-    return () => observer.disconnect()
+    return () => {
+      cancelAnimationFrame(rafId)
+      observer.disconnect()
+    }
   }, [isSending])
 
-  // After streaming ends, ensure we're pinned to the actual bottom.
-  // The ResizeObserver disconnects when isSending=false, but the DOM may
-  // still reflow (streaming → final rendered content). A delayed instant
-  // scroll catches any late layout shifts.
+  // [Tier 4] After streaming ends, ensure we're pinned to the actual bottom.
+  // Uses double-rAF (2 frames ≈ 33ms) instead of 150ms setTimeout to catch
+  // late layout shifts from streaming → final content reflow.
   const wasSendingRef = useRef(false)
   useEffect(() => {
     if (wasSendingRef.current && !isSending && isAtBottomRef.current) {
-      const timer = setTimeout(() => {
-        const viewport = scrollViewportRef.current
-        if (viewport && isAtBottomRef.current) {
-          const { scrollTop, scrollHeight, clientHeight } = viewport
-          if (scrollHeight - scrollTop - clientHeight > 1) {
-            viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
+      let cancelled = false
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (cancelled) return
+          const viewport = scrollViewportRef.current
+          if (viewport && isAtBottomRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = viewport
+            if (scrollHeight - scrollTop - clientHeight > 1) {
+              viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
+            }
           }
-        }
-      }, 150)
+        })
+      })
       wasSendingRef.current = false
-      return () => clearTimeout(timer)
+      return () => {
+        cancelled = true
+      }
     }
     wasSendingRef.current = !!isSending
   }, [isSending])
@@ -177,7 +245,7 @@ export function useScrollManagement({
     }
   }, [messages?.length])
 
-  // Handle scroll events to track if user is at bottom and if findings are visible
+  // [Tier 1] Handle scroll events — findings visibility removed (handled by IntersectionObserver)
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     // Skip updating isAtBottom during auto-scroll to avoid race conditions
     // This prevents the smooth scroll animation from incorrectly marking us as "not at bottom"
@@ -198,18 +266,6 @@ export function useScrollManagement({
     isAtBottomRef.current = atBottom
     // PERFORMANCE: Functional setState skips re-render when value hasn't changed
     setIsAtBottom(prev => (prev === atBottom ? prev : atBottom))
-
-    // Check if findings element is visible in the viewport
-    const findingsEl = target.querySelector('[data-review-findings="unfixed"]')
-    if (findingsEl) {
-      const rect = findingsEl.getBoundingClientRect()
-      const containerRect = target.getBoundingClientRect()
-      const isVisible =
-        rect.top < containerRect.bottom && rect.bottom > containerRect.top
-      setAreFindingsVisible(prev => (prev === isVisible ? prev : isVisible))
-    } else {
-      setAreFindingsVisible(prev => (prev === true ? prev : true))
-    }
   }, [])
 
   // Handle scroll-to-bottom completion from VirtualizedMessageList
@@ -218,7 +274,8 @@ export function useScrollManagement({
     setIsAtBottom(true)
   }, [])
 
-  // Scroll to bottom helper
+  // [Tier 4] Scroll to bottom helper — uses scrollend event instead of 350ms timeout.
+  // Findings visibility check removed (handled by IntersectionObserver).
   // Pass instant=true for user-initiated actions (answering questions, approving plans)
   // where DOM changes immediately and smooth scroll would target stale scrollHeight.
   // Default smooth is for auto-scroll during streaming.
@@ -229,6 +286,7 @@ export function useScrollManagement({
     // Clear existing timeout to prevent memory leaks
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current)
+      scrollTimeoutRef.current = null
     }
 
     isAtBottomRef.current = true
@@ -253,32 +311,31 @@ export function useScrollManagement({
       behavior: 'smooth',
     })
 
-    scrollTimeoutRef.current = setTimeout(() => {
+    // Use scrollend event to detect when smooth scroll finishes.
+    // Fallback to 400ms timeout for environments without scrollend support.
+    const onScrollEnd = () => {
       isAutoScrollingRef.current = false
+      cleanup()
 
-      if (viewport) {
-        // Correct scroll position if smooth scroll ended at wrong spot
-        // (DOM changes during animation can cause stale scrollHeight targeting)
-        const { scrollTop, scrollHeight, clientHeight } = viewport
-        if (scrollHeight - scrollTop - clientHeight > 2) {
-          viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
-        }
-
-        // Check findings visibility after scroll completes
-        const findingsEl = viewport.querySelector(
-          '[data-review-findings="unfixed"]'
-        )
-        if (findingsEl) {
-          const rect = findingsEl.getBoundingClientRect()
-          const containerRect = viewport.getBoundingClientRect()
-          const isVisible =
-            rect.top < containerRect.bottom && rect.bottom > containerRect.top
-          setAreFindingsVisible(isVisible)
-        } else {
-          setAreFindingsVisible(true)
-        }
+      // Correct scroll position if smooth scroll ended at wrong spot
+      // (DOM changes during animation can cause stale scrollHeight targeting)
+      const { scrollTop, scrollHeight, clientHeight } = viewport
+      if (scrollHeight - scrollTop - clientHeight > 2) {
+        viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
       }
-    }, 350)
+    }
+
+    const cleanup = () => {
+      viewport.removeEventListener('scrollend', onScrollEnd)
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+        scrollTimeoutRef.current = null
+      }
+    }
+
+    viewport.addEventListener('scrollend', onScrollEnd, { once: true })
+    // Fallback timeout in case scrollend doesn't fire
+    scrollTimeoutRef.current = setTimeout(onScrollEnd, 400)
   }, [])
 
   // Mark scroll state as "at bottom" without performing any physical scroll.

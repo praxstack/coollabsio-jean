@@ -113,7 +113,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   return (
     <div className="min-h-4 text-muted-foreground">
       {!hasVisibleStreamingContent && (
-        <div className="min-h-4" aria-hidden="true" />
+        <div className="min-h-6" aria-hidden="true" />
       )}
       {/* Render streaming content blocks inline if available */}
       {contentBlocks.length > 0 ? (

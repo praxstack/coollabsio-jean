@@ -22,6 +22,57 @@ import {
   type KeybindingsMap,
 } from '@/types/keybindings'
 
+export function getTerminalShortcutWorktreeId(): string | null {
+  const uiState = useUIStore.getState()
+  const chatState = useChatStore.getState()
+  const terminalState = useTerminalStore.getState()
+
+  const worktreeId = uiState.sessionChatModalOpen
+    ? (uiState.sessionChatModalWorktreeId ?? chatState.activeWorktreeId)
+    : chatState.activeWorktreeId
+
+  if (!worktreeId) return null
+
+  const terminalOpen =
+    terminalState.terminalPanelOpen[worktreeId] ||
+    terminalState.modalTerminalOpen[worktreeId]
+
+  return terminalOpen ? worktreeId : null
+}
+
+export function addTerminalTabForShortcut(): boolean {
+  const worktreeId = getTerminalShortcutWorktreeId()
+  if (!worktreeId) return false
+
+  useTerminalStore.getState().addTerminal(worktreeId)
+  return true
+}
+
+export function closeActiveTerminalTabForShortcut(): boolean {
+  const worktreeId = getTerminalShortcutWorktreeId()
+  if (!worktreeId) return false
+
+  const terminalStore = useTerminalStore.getState()
+  const activeTerminalId = terminalStore.activeTerminalIds[worktreeId]
+
+  if (!activeTerminalId) return true
+
+  invoke('stop_terminal', { terminalId: activeTerminalId }).catch(() => {
+    /* noop */
+  })
+  disposeTerminal(activeTerminalId)
+  terminalStore.removeTerminal(worktreeId, activeTerminalId)
+
+  const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
+  if (remaining.length === 0) {
+    terminalStore.setTerminalPanelOpen(worktreeId, false)
+    terminalStore.setTerminalVisible(false)
+    terminalStore.setModalTerminalOpen(worktreeId, false)
+  }
+
+  return true
+}
+
 /**
  * Main window event listeners - handles global keyboard shortcuts and other app-level events
  *
@@ -194,15 +245,8 @@ function executeKeybindingAction(
       break
     }
     case 'new_session': {
-      // If terminal is focused, add a new terminal tab instead
-      if (document.activeElement?.closest('.xterm')) {
-        const chatStore = useChatStore.getState()
-        const wId = chatStore.activeWorktreeId
-        if (wId) {
-          useTerminalStore.getState().addTerminal(wId)
-          break
-        }
-      }
+      // When terminal UI is open, CMD+T should always create a terminal tab.
+      if (addTerminalTabForShortcut()) break
       logger.debug('Keybinding: new_session')
       window.dispatchEvent(new CustomEvent('create-new-session'))
       break
@@ -220,29 +264,8 @@ function executeKeybindingAction(
       )
       break
     case 'close_session_or_worktree': {
-      // If terminal is focused, close the active terminal tab instead
-      if (document.activeElement?.closest('.xterm')) {
-        const chatStore = useChatStore.getState()
-        const wId = chatStore.activeWorktreeId
-        if (wId) {
-          const termStore = useTerminalStore.getState()
-          const activeTerminalId = termStore.activeTerminalIds[wId]
-          if (activeTerminalId) {
-            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(
-              () => {
-                /* noop */
-              }
-            )
-            disposeTerminal(activeTerminalId)
-            termStore.removeTerminal(wId, activeTerminalId)
-            const remaining = termStore.terminals[wId] ?? []
-            if (remaining.length === 0) {
-              termStore.setTerminalPanelOpen(wId, false)
-            }
-            break
-          }
-        }
-      }
+      // When terminal UI is open, CMD+W should always close the active terminal tab.
+      if (closeActiveTerminalTabForShortcut()) break
       // Default: close session/worktree
       logger.debug('Keybinding: close_session_or_worktree')
       window.dispatchEvent(new CustomEvent('close-session-or-worktree'))
@@ -447,6 +470,35 @@ export function useMainWindowEventListeners() {
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
+
+      // When terminal panel is open, remap shortcuts for terminal-specific actions
+      // and block all others so they don't interfere with terminal usage.
+      {
+        const terminalShortcutWorktreeId = getTerminalShortcutWorktreeId()
+
+        if (terminalShortcutWorktreeId) {
+          const kb = keybindingsRef.current
+
+          if (shortcut === kb.new_session) {
+            e.preventDefault()
+            e.stopPropagation()
+            addTerminalTabForShortcut()
+            return
+          }
+          if (shortcut === kb.close_session_or_worktree) {
+            e.preventDefault()
+            e.stopPropagation()
+            closeActiveTerminalTabForShortcut()
+            return
+          }
+          if (shortcut === kb.toggle_terminal || shortcut === kb.cancel_prompt) {
+            // Let these fall through to the normal keybinding handler below
+          } else {
+            // Block all other shortcuts
+            return
+          }
+        }
+      }
 
       // CMD/Ctrl+1–9: switch session tabs (when modal open), dashboard tabs, or worktree by index
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
