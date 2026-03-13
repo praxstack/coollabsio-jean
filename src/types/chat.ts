@@ -345,6 +345,7 @@ export interface CancelledEvent {
   session_id: string
   worktree_id: string // Kept for backward compatibility
   undo_send: boolean // True if user message should be restored to input (instant cancellation)
+  emitted_at_ms: number
 }
 
 /**

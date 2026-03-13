@@ -1244,6 +1244,10 @@ export function useSendMessage() {
         thinking_level: thinkingLevel,
       }
 
+      // Batch the optimistic user message AND sending state together so React
+      // renders both in a single pass (no two-phase scroll: message then placeholder).
+      useChatStore.getState().addSendingSession(sessionId)
+
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
         old => {

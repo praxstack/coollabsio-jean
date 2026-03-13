@@ -134,6 +134,7 @@ pub struct CancelledEvent {
     pub session_id: String,
     pub worktree_id: String, // Kept for backward compatibility
     pub undo_send: bool, // True if user message should be restored to input (instant cancellation)
+    pub emitted_at_ms: u64,
 }
 
 /// Payload for tool block position events sent to frontend

@@ -2147,6 +2147,10 @@ export const useChatStore = create<ChatUIState>()(
               state.streamingPlanApprovals
             const { [sessionId]: _em, ...executingModes } =
               state.executingModes
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2157,6 +2161,8 @@ export const useChatStore = create<ChatUIState>()(
               waitingForInputSessionIds,
               streamingPlanApprovals,
               executingModes,
+              pendingPermissionDenials,
+              deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               completedDurations:
                 sendStarted > 0

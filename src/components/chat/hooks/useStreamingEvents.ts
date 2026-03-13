@@ -1040,6 +1040,7 @@ export default function useStreamingEvents({
           session_id,
           worktree_id: eventWorktreeId,
           undo_send,
+          emitted_at_ms,
         } = event.payload
 
         // Flush any buffered chunks so streamingContents is up to date
@@ -1052,6 +1053,7 @@ export default function useStreamingEvents({
 
         // Capture streaming state BEFORE clearing (like chat:done does)
         const {
+          sendStartedAt,
           streamingContents,
           activeToolCalls,
           streamingContentBlocks,
@@ -1059,6 +1061,13 @@ export default function useStreamingEvents({
           activeSessionIds,
           markSessionNeedsDigest,
         } = useChatStore.getState()
+        const sendStarted = sendStartedAt[session_id] ?? 0
+        if (sendStarted > emitted_at_ms) {
+          console.warn(
+            `[Cancelled] Ignoring stale cancel event for session=${session_id} emitted_at_ms=${emitted_at_ms} send_started_at=${sendStarted}`
+          )
+          return
+        }
         const content = streamingContents[session_id]
         const toolCalls = activeToolCalls[session_id]
         const contentBlocks = streamingContentBlocks[session_id]

@@ -120,7 +120,7 @@ export const MessageList = memo(function MessageList({
         }
 
         return (
-          <div key={message.id} className="pb-4">
+          <div key={message.id}>
             <MessageItem
               message={message}
               messageIndex={index}

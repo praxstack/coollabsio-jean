@@ -323,7 +323,7 @@ export const VirtualizedMessageList = memo(
                   if (el) messageRefs.current.set(globalIndex, el)
                   else messageRefs.current.delete(globalIndex)
                 }}
-                className="pb-4"
+                className={globalIndex === messages.length - 1 && isSending ? '' : 'pb-4'}
               >
                 <MessageItem
                   message={message}
