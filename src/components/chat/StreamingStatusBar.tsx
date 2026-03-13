@@ -23,7 +23,6 @@ function getModeLabel(mode: string | undefined): string {
 export const StreamingStatusBar = memo(function StreamingStatusBar({
   isSending,
   sendStartedAt,
-  streamingExecutionMode,
   restoredRunStatus,
   restoredExecutionMode,
 }: StreamingStatusBarProps) {
