@@ -34,7 +34,7 @@ fi
 
 echo "==> Building AppImage via Tauri..."
 cd "$PROJECT_DIR"
-NO_STRIP=true tauri build --bundles appimage 2>&1 || {
+NO_STRIP=true bun run tauri build --bundles appimage 2>&1 || {
     echo "Tauri build failed, trying manual linuxdeploy fallback..."
     if [ ! -x "$LINUXDEPLOY_BIN" ]; then
         echo "ERROR: linuxdeploy not found/executable at $LINUXDEPLOY_BIN"

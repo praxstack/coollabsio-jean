@@ -203,16 +203,27 @@ export function useScrollManagement({
   useEffect(() => {
     // Streaming just started — ensure we're at bottom so ResizeObserver auto-scroll works.
     // Covers: queued messages executed by useQueueProcessor, plan approvals, direct sends.
+    // Double-rAF: when sending while a plan is pending, the PlanDisplay collapse happens
+    // in a child useEffect (setIsOpen(false)) which triggers a second render. A single rAF
+    // would scroll before that layout shift, leaving the viewport in a stale position.
     if (!wasSendingRef.current && isSending) {
       isAtBottomRef.current = true
       setIsAtBottom(true)
+      let cancelled = false
       const viewport = scrollViewportRef.current
       if (viewport) {
         requestAnimationFrame(() => {
-          if (isAtBottomRef.current) {
-            viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
-          }
+          requestAnimationFrame(() => {
+            if (cancelled) return
+            if (isAtBottomRef.current) {
+              viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
+            }
+          })
         })
+      }
+      wasSendingRef.current = !!isSending
+      return () => {
+        cancelled = true
       }
     }
 
