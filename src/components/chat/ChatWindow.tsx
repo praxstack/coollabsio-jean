@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke, listen } from '@/lib/transport'
-import { GitBranch, GitMerge, Layers } from 'lucide-react'
+import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
   useSession,
   useSessions,
@@ -2078,6 +2078,19 @@ export function ChatWindow({
                                     selectedBackend={selectedBackend}
                                     onFileClick={setViewingFilePath}
                                   />
+                                </div>
+                              )}
+                            {/* Setup script running indicator */}
+                            {worktree?.setup_script &&
+                              !setupScriptResult && (
+                                <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                  <span>
+                                    Running setup script:{' '}
+                                    <code className="rounded bg-muted px-1 py-0.5">
+                                      {worktree.setup_script}
+                                    </code>
+                                  </span>
                                 </div>
                               )}
                             {/* Setup script output from jean.json */}

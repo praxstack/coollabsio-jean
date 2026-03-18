@@ -38,7 +38,8 @@ use super::types::{
     JeanConfig, MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent,
     WorktreeBranchExistsEvent, WorktreeCreateErrorEvent, WorktreeCreatedEvent,
     WorktreeCreatingEvent, WorktreeDeleteErrorEvent, WorktreeDeletedEvent, WorktreeDeletingEvent,
-    WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
+    WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent, WorktreeSetupCompleteEvent,
+    WorktreeUnarchivedEvent,
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
@@ -1203,31 +1204,14 @@ pub async fn create_worktree(
                 }
             }
 
-            // Check for jean.json and run setup script
-            let (setup_output, setup_script, setup_success) =
-                if let Some(config) = git::read_jean_config(&project_path) {
-                    if let Some(script) = config.scripts.setup {
-                        log::trace!("Background: Found jean.json with setup script, executing...");
-                        match git::run_setup_script(
-                            &worktree_path_clone,
-                            &project_path,
-                            &final_branch,
-                            &script,
-                        ) {
-                            Ok(output) => (Some(output), Some(script), Some(true)),
-                            Err(e) => {
-                                log::warn!("Background: Setup script failed (continuing): {e}");
-                                (Some(e), Some(script), Some(false))
-                            }
-                        }
-                    } else {
-                        (None, None, None)
-                    }
-                } else {
-                    (None, None, None)
-                };
+            // Check for jean.json setup script upfront so we can include it in the
+            // initial worktree record. This lets the frontend know a setup script
+            // will run (setup_script is set, but setup_output is still None).
+            let pending_setup_script = git::read_jean_config(&project_path)
+                .and_then(|config| config.scripts.setup);
 
-            // Save to storage
+            // Save to storage and emit worktree:created BEFORE running setup script
+            // so the UI can open immediately and the user can start typing.
             if let Ok(mut data) = load_projects_data(&app_clone) {
                 // Get max order for worktrees in this project
                 let max_order = data
@@ -1238,17 +1222,18 @@ pub async fn create_worktree(
                     .max()
                     .unwrap_or(0);
 
-                // Create the final worktree record
+                // Create the worktree record (setup_script set if jean.json has one,
+                // but setup_output is None — signals "setup pending" to frontend)
                 let worktree = Worktree {
                     id: worktree_id_clone.clone(),
                     project_id: project_id_clone.clone(),
                     name: name_clone.clone(),
                     path: worktree_path_clone.clone(),
-                    branch: final_branch,
+                    branch: final_branch.clone(),
                     created_at,
-                    setup_output,
-                    setup_script,
-                    setup_success,
+                    setup_output: None,
+                    setup_script: pending_setup_script.clone(),
+                    setup_success: None,
                     session_type: SessionType::Worktree,
                     pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                     pr_url: None,
@@ -1289,7 +1274,7 @@ pub async fn create_worktree(
                     return;
                 }
 
-                // Emit success event
+                // Emit success event — UI opens immediately
                 log::trace!(
                     "Background: Worktree created successfully: {}",
                     worktree.name
@@ -1307,6 +1292,52 @@ pub async fn create_worktree(
                 };
                 if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                     log::error!("Failed to emit worktree:error event: {emit_err}");
+                }
+                return;
+            }
+
+            // Run setup script AFTER emitting worktree:created (user can already type)
+            if let Some(script) = pending_setup_script {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                let (setup_output, setup_success) = match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &final_branch,
+                    &script,
+                ) {
+                    Ok(output) => (output, true),
+                    Err(e) => {
+                        log::warn!("Background: Setup script failed (continuing): {e}");
+                        (e, false)
+                    }
+                };
+
+                // Update worktree in storage with setup results
+                if let Ok(mut data) = load_projects_data(&app_clone) {
+                    if let Some(wt) = data
+                        .worktrees
+                        .iter_mut()
+                        .find(|w| w.id == worktree_id_clone)
+                    {
+                        wt.setup_output = Some(setup_output.clone());
+                        wt.setup_script = Some(script.clone());
+                        wt.setup_success = Some(setup_success);
+                    }
+                    if let Err(e) = save_projects_data(&app_clone, &data) {
+                        log::warn!("Background: Failed to save setup results: {e}");
+                    }
+                }
+
+                // Emit setup complete event
+                let setup_event = WorktreeSetupCompleteEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    setup_output,
+                    setup_script: script,
+                    setup_success,
+                };
+                if let Err(e) = app_clone.emit_all("worktree:setup_complete", &setup_event) {
+                    log::error!("Failed to emit worktree:setup_complete event: {e}");
                 }
             }
         })); // end catch_unwind

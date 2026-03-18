@@ -440,6 +440,21 @@ pub struct WorktreeCreatedEvent {
     pub worktree: Worktree,
 }
 
+/// Event emitted when worktree setup script completes (after worktree:created)
+#[derive(Clone, Serialize)]
+pub struct WorktreeSetupCompleteEvent {
+    /// The worktree ID
+    pub id: String,
+    /// The project ID
+    pub project_id: String,
+    /// Output from the setup script (stdout + stderr)
+    pub setup_output: String,
+    /// The setup script command that was executed
+    pub setup_script: String,
+    /// Whether the setup script succeeded
+    pub setup_success: bool,
+}
+
 /// Event emitted when worktree creation fails
 #[derive(Clone, Serialize)]
 pub struct WorktreeCreateErrorEvent {

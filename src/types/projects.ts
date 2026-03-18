@@ -156,6 +156,15 @@ export interface WorktreeCreatedEvent {
   worktree: Worktree
 }
 
+/** Event payload when worktree setup script completes (after worktree:created) */
+export interface WorktreeSetupCompleteEvent {
+  id: string
+  project_id: string
+  setup_output: string
+  setup_script: string
+  setup_success: boolean
+}
+
 /** Event payload when worktree creation fails */
 export interface WorktreeCreateErrorEvent {
   id: string
