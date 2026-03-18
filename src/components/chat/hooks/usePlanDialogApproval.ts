@@ -131,15 +131,10 @@ export function usePlanDialogApproval({
       clearStreamingContentBlocks(activeSessionId)
       setSessionReviewing(activeSessionId, false)
 
-      // Scroll to bottom after DOM updates from collapsing the plan approval UI
-      requestAnimationFrame(() => {
-        scrollToBottom(true)
-      })
-      // Safety net: if React committed after our rAF scroll (large content blocks),
-      // the scroll position may be past the now-shorter content → empty viewport.
+      // Scroll after plan collapse animation (150ms in App.css) completes
       setTimeout(() => {
         scrollToBottom(true)
-      }, 100)
+      }, 200)
 
       // Chain: mark_plan_approved → update_session_state → broadcast
       // On WebSocket, commands dispatch concurrently. update_session_state emits

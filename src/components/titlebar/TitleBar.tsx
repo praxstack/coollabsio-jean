@@ -62,7 +62,7 @@ export function TitleBar({
     <div
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
-        'relative flex h-10 w-full shrink-0 items-center justify-between',
+        'relative flex h-9 w-full shrink-0 items-center justify-between',
         'bg-background/80 backdrop-blur-md md:px-2',
         native ? 'z-[60]' : 'z-50',
         className

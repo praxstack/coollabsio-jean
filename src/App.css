@@ -333,6 +333,20 @@
   }
 }
 
+/* Pulsing glow for running terminal icon indicator */
+@keyframes icon-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.8));
+  }
+}
+
+.animate-icon-glow {
+  animation: icon-glow 2s ease-in-out infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50 outline-none;

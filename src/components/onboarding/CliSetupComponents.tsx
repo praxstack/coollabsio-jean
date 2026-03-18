@@ -85,16 +85,31 @@ export function SetupState({
             Loading versions...
           </div>
         ) : isError || (!isLoading && versions.length === 0) ? (
-          <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
-            <span className="text-sm text-muted-foreground">
-              Failed to load versions. This may be due to GitHub API rate limiting.
-            </span>
-            {onRetry && (
-              <Button variant="ghost" size="sm" onClick={() => onRetry()}>
-                <RefreshCw className="size-3.5" />
-                Retry
-              </Button>
-            )}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+              <span className="text-sm text-muted-foreground">
+                Failed to load versions. This may be due to GitHub API rate
+                limiting.
+              </span>
+              {onRetry && (
+                <Button variant="ghost" size="sm" onClick={() => onRetry()}>
+                  <RefreshCw className="size-3.5" />
+                  Retry
+                </Button>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">
+                Or enter a version manually (e.g., 2.74.0)
+              </label>
+              <input
+                type="text"
+                placeholder="2.74.0"
+                value={selectedVersion ?? ''}
+                onChange={e => onVersionChange(e.target.value.trim())}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
           </div>
         ) : (
           <Select

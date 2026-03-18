@@ -21,6 +21,10 @@ const CODEX_USAGE_CACHE_TTL_SECS: u64 = 5 * 60;
 const GITHUB_API_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
+/// Emergency fallback version when API fails AND no cache exists.
+const FALLBACK_CODEX_VERSION: &str = "0.1.2505301";
+const CODEX_VERSIONS_CACHE_FILE: &str = "codex-versions-cache.json";
+
 /// Extract version number from a tag like "v0.104.0" or "vrust-v0.104.0"
 fn extract_version_from_tag(tag: &str) -> String {
     // Try to find a semver pattern (digits.digits.digits)
@@ -933,15 +937,86 @@ pub async fn get_codex_usage() -> Result<CodexUsageSnapshot, String> {
     Ok(snapshot)
 }
 
-/// Get available Codex CLI versions from GitHub releases
+/// Cached versions structure for disk persistence
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedCodexVersions {
+    versions: Vec<CodexReleaseInfo>,
+    fetched_at: String,
+}
+
+fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
+    let cache_path = match super::config::get_cli_dir(app) {
+        Ok(dir) => dir.join(CODEX_VERSIONS_CACHE_FILE),
+        Err(e) => {
+            log::warn!("Cannot resolve Codex CLI dir for cache: {e}");
+            return;
+        }
+    };
+    let cached = CachedCodexVersions {
+        versions: versions.to_vec(),
+        fetched_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default(),
+    };
+    match serde_json::to_string(&cached) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&cache_path, json) {
+                log::warn!("Failed to write Codex versions cache: {e}");
+            }
+        }
+        Err(e) => log::warn!("Failed to serialize Codex versions cache: {e}"),
+    }
+}
+
+fn load_codex_versions_cache(app: &AppHandle) -> Option<Vec<CodexReleaseInfo>> {
+    let cache_path = super::config::get_cli_dir(app).ok()?.join(CODEX_VERSIONS_CACHE_FILE);
+    let contents = std::fs::read_to_string(&cache_path).ok()?;
+    let cached: CachedCodexVersions = serde_json::from_str(&contents).ok()?;
+    if cached.versions.is_empty() {
+        return None;
+    }
+    log::trace!("Loaded {} cached Codex versions", cached.versions.len());
+    Some(cached.versions)
+}
+
+fn fallback_codex_versions() -> Vec<CodexReleaseInfo> {
+    vec![CodexReleaseInfo {
+        version: FALLBACK_CODEX_VERSION.to_string(),
+        tag_name: format!("codex-v{FALLBACK_CODEX_VERSION}"),
+        published_at: String::new(),
+        prerelease: false,
+    }]
+}
+
+/// Get available Codex CLI versions from GitHub releases.
+///
+/// Falls back to disk cache or a hardcoded version if the API is unreachable.
 #[tauri::command]
 pub async fn get_available_codex_versions(app: AppHandle) -> Result<Vec<CodexReleaseInfo>, String> {
     log::trace!("Fetching available Codex CLI versions from GitHub API");
 
-    let client = build_github_client()?;
-    let token = resolve_github_api_token(&app);
+    match fetch_codex_versions_from_api(&app).await {
+        Ok(versions) if !versions.is_empty() => {
+            save_codex_versions_cache(&app, &versions);
+            Ok(versions)
+        }
+        Ok(_empty) => {
+            log::warn!("GitHub API returned empty Codex releases, falling back to cache");
+            Ok(load_codex_versions_cache(&app).unwrap_or_else(fallback_codex_versions))
+        }
+        Err(e) => {
+            log::warn!("Codex GitHub API request failed ({e}), falling back to cache");
+            Ok(load_codex_versions_cache(&app).unwrap_or_else(fallback_codex_versions))
+        }
+    }
+}
 
-    // Fetch enough releases to find stable ones buried behind prereleases
+/// Fetch Codex versions directly from the GitHub API (no fallback).
+async fn fetch_codex_versions_from_api(app: &AppHandle) -> Result<Vec<CodexReleaseInfo>, String> {
+    let client = build_github_client()?;
+    let token = resolve_github_api_token(app);
+
     let mut request = client
         .get(format!("{CODEX_RELEASES_API}?per_page=100"))
         .header("Accept", GITHUB_API_ACCEPT)
@@ -975,7 +1050,7 @@ pub async fn get_available_codex_versions(app: AppHandle) -> Result<Vec<CodexRel
         })
         .collect();
 
-    log::trace!("Found {} Codex CLI versions", versions.len());
+    log::trace!("Found {} Codex CLI versions from API", versions.len());
     Ok(versions)
 }
 
@@ -1015,7 +1090,9 @@ fn get_codex_target() -> Result<&'static str, String> {
     Err("Unsupported platform".to_string())
 }
 
-/// Fetch the latest Codex CLI version from GitHub API
+/// Fetch the latest Codex CLI version from GitHub API.
+///
+/// Falls back to disk cache or hardcoded version if the API is unreachable.
 async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
     log::trace!("Fetching latest Codex CLI version");
 
@@ -1028,26 +1105,24 @@ async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
     if let Some(ref token) = token {
         request = request.bearer_auth(token);
     }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch latest release: {e}"))?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Failed to fetch latest release: HTTP {}",
-            response.status()
-        ));
+    if let Ok(resp) = request.send().await {
+        if resp.status().is_success() {
+            if let Ok(release) = resp.json::<GitHubRelease>().await {
+                let version = extract_version_from_tag(&release.tag_name);
+                log::trace!("Latest Codex CLI version: {version}");
+                return Ok(version);
+            }
+        }
     }
 
-    let release: GitHubRelease = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse release info: {e}"))?;
-
-    let version = extract_version_from_tag(&release.tag_name);
-    log::trace!("Latest Codex CLI version: {version}");
-    Ok(version)
+    log::warn!("Failed to fetch latest Codex version from API, using fallback");
+    if let Some(cached) = load_codex_versions_cache(app) {
+        if let Some(first) = cached.into_iter().find(|v| !v.prerelease) {
+            return Ok(first.version);
+        }
+    }
+    Ok(FALLBACK_CODEX_VERSION.to_string())
 }
 
 /// Find the download URL for a specific asset by searching recent releases

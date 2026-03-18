@@ -1725,7 +1725,7 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "get_available_opencode_versions" => {
-            let result = crate::opencode_cli::get_available_opencode_versions().await?;
+            let result = crate::opencode_cli::get_available_opencode_versions(app.clone()).await?;
             to_value(result)
         }
         "install_opencode_cli" => {

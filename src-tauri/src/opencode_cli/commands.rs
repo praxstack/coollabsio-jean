@@ -10,6 +10,10 @@ use crate::platform::silent_command;
 /// GitHub owner/repo for OpenCode releases.
 const GITHUB_REPO: &str = "anomalyco/opencode";
 
+/// Emergency fallback version when API fails AND no cache exists.
+const FALLBACK_OPENCODE_VERSION: &str = "0.4.1";
+const OPENCODE_VERSIONS_CACHE_FILE: &str = "opencode-versions-cache.json";
+
 /// Status of the OpenCode CLI installation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeCliStatus {
@@ -384,9 +388,81 @@ fn get_platform_asset() -> Result<PlatformAsset, String> {
     Err("Unsupported platform".to_string())
 }
 
+/// Cached versions structure for disk persistence
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct CachedOpenCodeVersions {
+    versions: Vec<OpenCodeReleaseInfo>,
+    fetched_at: String,
+}
+
+fn save_opencode_versions_cache(app: &AppHandle, versions: &[OpenCodeReleaseInfo]) {
+    let cache_path = match super::config::get_cli_dir(app) {
+        Ok(dir) => dir.join(OPENCODE_VERSIONS_CACHE_FILE),
+        Err(e) => {
+            log::warn!("Cannot resolve OpenCode CLI dir for cache: {e}");
+            return;
+        }
+    };
+    let cached = CachedOpenCodeVersions {
+        versions: versions.to_vec(),
+        fetched_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default(),
+    };
+    match serde_json::to_string(&cached) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&cache_path, json) {
+                log::warn!("Failed to write OpenCode versions cache: {e}");
+            }
+        }
+        Err(e) => log::warn!("Failed to serialize OpenCode versions cache: {e}"),
+    }
+}
+
+fn load_opencode_versions_cache(app: &AppHandle) -> Option<Vec<OpenCodeReleaseInfo>> {
+    let cache_path = super::config::get_cli_dir(app).ok()?.join(OPENCODE_VERSIONS_CACHE_FILE);
+    let contents = std::fs::read_to_string(&cache_path).ok()?;
+    let cached: CachedOpenCodeVersions = serde_json::from_str(&contents).ok()?;
+    if cached.versions.is_empty() {
+        return None;
+    }
+    log::trace!("Loaded {} cached OpenCode versions", cached.versions.len());
+    Some(cached.versions)
+}
+
+fn fallback_opencode_versions() -> Vec<OpenCodeReleaseInfo> {
+    vec![OpenCodeReleaseInfo {
+        version: FALLBACK_OPENCODE_VERSION.to_string(),
+        tag_name: format!("v{FALLBACK_OPENCODE_VERSION}"),
+        published_at: String::new(),
+        prerelease: false,
+    }]
+}
+
 /// Get available OpenCode versions from GitHub releases.
+///
+/// Falls back to disk cache or a hardcoded version if the API is unreachable.
 #[tauri::command]
-pub async fn get_available_opencode_versions() -> Result<Vec<OpenCodeReleaseInfo>, String> {
+pub async fn get_available_opencode_versions(app: AppHandle) -> Result<Vec<OpenCodeReleaseInfo>, String> {
+    match fetch_opencode_versions_from_api().await {
+        Ok(versions) if !versions.is_empty() => {
+            save_opencode_versions_cache(&app, &versions);
+            Ok(versions)
+        }
+        Ok(_empty) => {
+            log::warn!("GitHub API returned empty OpenCode releases, falling back to cache");
+            Ok(load_opencode_versions_cache(&app).unwrap_or_else(fallback_opencode_versions))
+        }
+        Err(e) => {
+            log::warn!("OpenCode GitHub API request failed ({e}), falling back to cache");
+            Ok(load_opencode_versions_cache(&app).unwrap_or_else(fallback_opencode_versions))
+        }
+    }
+}
+
+/// Fetch OpenCode versions directly from the GitHub API (no fallback).
+async fn fetch_opencode_versions_from_api() -> Result<Vec<OpenCodeReleaseInfo>, String> {
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases");
     log::debug!("Fetching available OpenCode versions from {url}");
 
@@ -454,7 +530,7 @@ pub async fn install_opencode_cli(app: AppHandle, version: Option<String>) -> Re
     // Determine version
     let version = match version.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         Some(v) => v.trim_start_matches('v').to_string(),
-        None => fetch_latest_version().await?,
+        None => fetch_latest_version(&app).await?,
     };
 
     let tag = format!("v{version}");
@@ -602,7 +678,9 @@ fn extract_binary_from_zip(archive_bytes: &[u8], binary_name: &str) -> Result<Ve
 }
 
 /// Fetch the latest release version from GitHub.
-async fn fetch_latest_version() -> Result<String, String> {
+///
+/// Falls back to disk cache or hardcoded version if the API is unreachable.
+async fn fetch_latest_version(app: &AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     let response = client
         .get(format!(
@@ -610,22 +688,23 @@ async fn fetch_latest_version() -> Result<String, String> {
         ))
         .header("User-Agent", "jean-desktop")
         .send()
-        .await
-        .map_err(|e| format!("Failed to fetch latest version: {e}"))?;
+        .await;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Failed to fetch latest version: HTTP {}",
-            response.status()
-        ));
+    if let Ok(resp) = response {
+        if resp.status().is_success() {
+            if let Ok(release) = resp.json::<GitHubRelease>().await {
+                return Ok(release.tag_name.trim_start_matches('v').to_string());
+            }
+        }
     }
 
-    let release: GitHubRelease = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse latest release: {e}"))?;
-
-    Ok(release.tag_name.trim_start_matches('v').to_string())
+    log::warn!("Failed to fetch latest OpenCode version from API, using fallback");
+    if let Some(cached) = load_opencode_versions_cache(app) {
+        if let Some(first) = cached.into_iter().find(|v| !v.prerelease) {
+            return Ok(first.version);
+        }
+    }
+    Ok(FALLBACK_OPENCODE_VERSION.to_string())
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, FileText, AlertCircle } from 'lucide-react'
 import { readPlanFile } from '@/services/chat'
@@ -42,6 +42,11 @@ export function PlanDisplay({
   defaultCollapsed = false,
 }: PlanDisplayProps) {
   const [isOpen, setIsOpen] = useState(!defaultCollapsed)
+
+  // Sync collapse when plan gets approved (defaultCollapsed transitions to true)
+  useEffect(() => {
+    if (defaultCollapsed) setIsOpen(false)
+  }, [defaultCollapsed])
 
   // Extract filename from path for display (only for file-based plans)
   const filename = filePath ? getFilename(filePath) : null

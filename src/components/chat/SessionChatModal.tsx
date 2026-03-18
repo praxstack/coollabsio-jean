@@ -232,6 +232,10 @@ export function SessionChatModal({
   )
   const { data: preferences } = usePreferences()
   const { data: runScripts = [] } = useRunScripts(worktreePath)
+  const hasRunningTerminal = useTerminalStore(state => {
+    const terminals = state.terminals[worktreeId] ?? []
+    return terminals.some(t => state.runningTerminals.has(t.id))
+  })
   const createSession = useCreateSession()
 
   // Horizontal scroll on session tabs
@@ -797,10 +801,10 @@ export function SessionChatModal({
                           className="h-7 px-2 text-xs"
                           onClick={handleRun}
                         >
-                          <Play className="h-3 w-3" />
+                          <Play className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Run</TooltipContent>
+                      <TooltipContent>{hasRunningTerminal ? 'Running' : 'Run'}</TooltipContent>
                     </Tooltip>
                   )}
                   {runScripts.length > 1 && (
@@ -813,10 +817,10 @@ export function SessionChatModal({
                             className="h-7 rounded-r-none px-2 text-xs"
                             onClick={handleRun}
                           >
-                            <Play className="h-3 w-3" />
+                            <Play className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`} />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Run first command</TooltipContent>
+                        <TooltipContent>{hasRunningTerminal ? 'Running' : 'Run first command'}</TooltipContent>
                       </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -919,14 +923,14 @@ export function SessionChatModal({
                     </DropdownMenuItem>
                     {runScripts.length === 1 && (
                       <DropdownMenuItem onSelect={handleRun}>
-                        <Play className="h-4 w-4" />
+                        <Play className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`} />
                         Run
                       </DropdownMenuItem>
                     )}
                     {runScripts.length > 1 && (
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
-                          <Play className="h-4 w-4" />
+                          <Play className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`} />
                           Run
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
